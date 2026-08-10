@@ -431,12 +431,25 @@ func TestV9RequiresReviewedVariableReasoningProfile(t *testing.T) {
 	snapshot := relayHealthSnapshot{
 		AccountingVersion: 2,
 		Status:            "ok",
-		Provider:          "openrouter",
+		Provider:          llm.V9AggregateProvider,
 		ProfileRevision:   llm.V9AggregateProfileRevision,
 		Model:             llm.V7HarnessModel,
 	}
 	if err := requireTokenAccounting(snapshot, protocol.BenchVersionV9, "full"); err != nil {
 		t.Fatalf("v9 rejected reviewed variable-reasoning profile: %v", err)
+	}
+
+	legacy := snapshot
+	legacy.Provider = "openrouter"
+	legacy.ProfileRevision = llm.V9LegacyOpenRouterProfileRevision
+	if err := requireTokenAccounting(legacy, protocol.BenchVersionV9, "full"); err != nil {
+		t.Fatalf("v9 rejected rolling legacy OpenRouter profile: %v", err)
+	}
+
+	wrongPair := snapshot
+	wrongPair.Provider = "openrouter"
+	if err := requireTokenAccounting(wrongPair, protocol.BenchVersionV9, "full"); err == nil || !strings.Contains(err.Error(), "profile") {
+		t.Fatalf("v9 accepted mismatched provider/profile identity: %v", err)
 	}
 
 	for _, profile := range []string{

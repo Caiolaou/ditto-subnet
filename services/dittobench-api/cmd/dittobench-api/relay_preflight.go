@@ -234,9 +234,20 @@ func validV7RouteProfile(profile string) bool {
 
 func validBenchmarkRouteProfile(benchVersion int, profile string) bool {
 	if benchVersion == protocol.BenchVersionV9 {
-		return profile == llm.V9AggregateProfileRevision
+		// Keep accepting the immediately preceding OpenRouter-only identity so
+		// an in-flight v9 lease survives a rolling platform/scorer deployment.
+		return profile == llm.V9AggregateProfileRevision ||
+			profile == llm.V9LegacyOpenRouterProfileRevision
 	}
 	return validV7RouteProfile(profile)
+}
+
+func validBenchmarkRouteIdentity(benchVersion int, provider, profile string) bool {
+	if benchVersion == protocol.BenchVersionV9 {
+		return (provider == llm.V9AggregateProvider && profile == llm.V9AggregateProfileRevision) ||
+			(provider == "openrouter" && profile == llm.V9LegacyOpenRouterProfileRevision)
+	}
+	return provider != "" && validBenchmarkRouteProfile(benchVersion, profile)
 }
 
 // requireTokenAccounting is the admission gate on relay identity before a run.
@@ -259,7 +270,9 @@ func requireTokenAccounting(snapshot relayHealthSnapshot, benchVersion int, runS
 		if snapshot.Model != llm.V7HarnessModel {
 			return fmt.Errorf("relay model does not match benchmark v7")
 		}
-		if !validBenchmarkRouteProfile(benchVersion, snapshot.ProfileRevision) {
+		if !validBenchmarkRouteIdentity(
+			benchVersion, snapshot.Provider, snapshot.ProfileRevision,
+		) {
 			return fmt.Errorf("relay profile does not match benchmark v%d", benchVersion)
 		}
 	}

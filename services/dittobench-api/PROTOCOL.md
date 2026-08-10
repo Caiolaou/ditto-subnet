@@ -92,7 +92,7 @@ usage still includes reasoning tokens in the ordinary completion-token total;
 the existing trusted budget and efficiency accounting therefore applies to the
 chosen strategy without exposing reasoning text. Bench v7 and v8 retain their
 historical fixed `medium` contract. The variable-strategy route is a distinct
-reviewed identity, `openrouter-route-6a097486af3c178d-v1`; a v9 scorer rejects
+reviewed identity, `provider-list-route-bf48ee4a39ff8119-v1`; a v9 scorer rejects
 the fixed-medium v7/v8 profile `openrouter-route-a471cd87ae7df5b9-v1` even
 though both serve the same model.
 

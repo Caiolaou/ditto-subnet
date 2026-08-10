@@ -7,8 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from ditto.api_server.inference_routing import (
     AGGREGATE_PROVIDER,
+    V9_AGGREGATE_PROVIDER,
     ProviderRouteRefresher,
     aggregate_profile_revision,
+    aggregate_provider,
     rank_routes,
     select_route,
 )
@@ -188,7 +190,7 @@ async def test_v9_aggregate_selection_requires_variable_reasoning_profile(
     v7_profile = aggregate_profile_revision(model, bench_version=7)
     v9_profile = aggregate_profile_revision(model, bench_version=9)
     assert v7_profile == "openrouter-route-a471cd87ae7df5b9-v1"
-    assert v9_profile == "openrouter-route-6a097486af3c178d-v1"
+    assert v9_profile == "provider-list-route-bf48ee4a39ff8119-v1"
     assert v9_profile != v7_profile
 
     async with session_maker() as session, session.begin():
@@ -214,7 +216,11 @@ async def test_v9_aggregate_selection_requires_variable_reasoning_profile(
             session.add(
                 InferenceProviderRoute(
                     model=model,
-                    provider=AGGREGATE_PROVIDER,
+                    provider=(
+                        V9_AGGREGATE_PROVIDER
+                        if profile == v9_profile
+                        else AGGREGATE_PROVIDER
+                    ),
                     profile_revision=profile,
                     status="healthy",
                     calibration_status="eligible",
@@ -313,9 +319,14 @@ async def test_aggregate_discovery_tracks_active_model_endpoints(
                     profile,
                     aggregate_profile_revision(model, bench_version=9),
                 ):
+                    bench_version = 9 if discovered_profile != profile else 7
                     route = await session.get(
                         InferenceProviderRoute,
-                        (model, AGGREGATE_PROVIDER, discovered_profile),
+                        (
+                            model,
+                            aggregate_provider(bench_version=bench_version),
+                            discovered_profile,
+                        ),
                     )
                     assert route is not None
                     assert route.status == expected

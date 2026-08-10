@@ -30,11 +30,13 @@ const (
 	ChutesRelayProfileRevision     = "chutes-qwen3-32b-tee-no-think-v1"
 	OpenRouterRelayProfileRevision = "openrouter-nebius-qwen3-32b-no-think-v1"
 
-	// V9AggregateProfileRevision is the reviewed aggregate OpenRouter route
+	// V9AggregateProfileRevision is the reviewed ordered provider-list route
 	// contract where low/medium/high reasoning effort is agent-selected per
 	// request and omission defaults to medium. It must never be confused with
-	// the fixed-medium v7/v8 aggregate profile.
-	V9AggregateProfileRevision = "openrouter-route-6a097486af3c178d-v1"
+	// the fixed-medium v7/v8 OpenRouter profile.
+	V9AggregateProvider               = "provider-list"
+	V9AggregateProfileRevision        = "provider-list-route-bf48ee4a39ff8119-v1"
+	V9LegacyOpenRouterProfileRevision = "openrouter-route-6a097486af3c178d-v1"
 )
 
 // HarnessModel returns the frozen locked model id every miner harness is scored

@@ -152,6 +152,9 @@ secret_screener_controller_api_token: ""
 platform_inference_proxy_enabled: false
 platform_inference_proxy_required: false
 secret_platform_openrouter_key: validator-openrouter-key
+# Optional second chat gateway. Set this only after its Secret Manager payload
+# exists; empty keeps Instant unavailable and preserves OpenRouter-only routing.
+secret_platform_instant_key: ""
 platform_inference_allowed_models: qwen/qwen3-32b,openai/gpt-oss-20b
 platform_inference_provider: nebius
 # Initial v7 mode: one reviewed logical route, OpenRouter speed sorting, and
