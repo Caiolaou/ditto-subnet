@@ -76,3 +76,15 @@ Keep the catalog description in `MCP_CATALOG_DESCRIPTIONS` short — the whole
 catalog is loaded into model context before any call, and the test bounds both
 the total and the per-description length. Long-form operational notes belong in
 the `description` field, which `get_backroom_tool_help` serves on demand.
+
+## Paging
+
+A paged tool answers with `count` (the upstream total), `returned` (rows in this
+response), `limit`, `offset`, and `has_more`. `has_more` is the only field that
+reports MCP paging: an upstream `truncated` flag means the platform dropped rows
+before paging, which no later offset can recover, and the two are not
+interchangeable. Default page sizes are bounded so one call cannot flood model
+context, but a manifest an operator reads to decide *what exists* — today
+`list_screening_source_files` — defaults to the platform's whole listing rather
+than a page, because a row silently missing from page one is evidence the
+reviewer never learns to ask for. `mcp.server.test.ts` pins each tool's bound.
