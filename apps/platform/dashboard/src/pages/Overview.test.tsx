@@ -113,9 +113,10 @@ describe("overview masthead", () => {
     const section = document.querySelector('section.page[data-page="overview"]') as HTMLElement;
     const masthead = section.querySelector(".overview-masthead") as HTMLElement;
     expect(masthead).toBeTruthy();
-    // The band is the page's first reading line; the two-pane split follows.
+    // The band is the page's first reading line; economics + two-pane split follow.
     expect(section.firstElementChild).toBe(masthead);
-    expect(masthead.nextElementSibling?.classList.contains("overview-split")).toBe(true);
+    expect(masthead.nextElementSibling?.classList.contains("chain-economics")).toBe(true);
+    expect(section.querySelector(".overview-split")).toBeTruthy();
     // Three instruments, in reading order, inside the one frame.
     const cells = Array.from(masthead.children).map((el) => el.className.split(" ")[0]);
     expect(cells).toEqual(["champion-box", "snapshot", "overview-clock"]);
