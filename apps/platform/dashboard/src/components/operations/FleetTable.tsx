@@ -190,8 +190,7 @@ function FleetIdentity(props: {
 }): JSX.Element {
   const hotkey = () => hotkeyOf(props.entry, props.singular);
   const reportedAt = () => props.entry.seen_at || props.entry.reported_at;
-  const stakeAlpha = () =>
-    props.singular === "validator" ? props.stakes?.[hotkey()] : undefined;
+  const stakeAlpha = () => (props.singular === "validator" ? props.stakes?.[hotkey()] : undefined);
   // Validators are keyed by a distinct hotkey; the screener fleet shares one
   // hotkey, so each worker is distinguished by its instance_id.
   const displayName = () =>

@@ -310,10 +310,7 @@ export function MetagraphPage(
                       <div class="col-agent" role="cell">
                         <div class="metagraph-agent-cell">
                           <MinerAvatar url={info().avatarUrl} />
-                          <span
-                            class="metagraph-agent"
-                            classList={{ empty: !info().agentName }}
-                          >
+                          <span class="metagraph-agent" classList={{ empty: !info().agentName }}>
                             {label()}
                           </span>
                         </div>
@@ -321,11 +318,7 @@ export function MetagraphPage(
                       <div class="col-key" role="cell">
                         <div class="metagraph-key" title={neuron.hotkey}>
                           <span class="mono">{shortKey(neuron.hotkey)}</span>
-                          <CopyButton
-                            class="metagraph-copy"
-                            value={neuron.hotkey}
-                            label="hotkey"
-                          />
+                          <CopyButton class="metagraph-copy" value={neuron.hotkey} label="hotkey" />
                         </div>
                       </div>
                       <div class="col-key" role="cell">
@@ -385,9 +378,9 @@ export function MetagraphPage(
           }}
         />
         <p class="metagraph-footnote">
-          Miners only. Stake/emission are on-chain α. τ/day = emission × tempos/day × α/TAO.
-          Agent, score, and avatar are matched by miner hotkey (submission key) — click a row
-          for miner history.
+          Miners only. Stake/emission are on-chain α. τ/day = emission × tempos/day × α/TAO. Agent,
+          score, and avatar are matched by miner hotkey (submission key) — click a row for miner
+          history.
         </p>
       </div>
     </section>

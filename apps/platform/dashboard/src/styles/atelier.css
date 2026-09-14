@@ -117,13 +117,20 @@ body {
   line-height: 1.5;
   font-variant-numeric: tabular-nums;
   background:
-    radial-gradient(1000px 480px at 70% -8%, color-mix(in oklch, var(--a-champagne) 6%, transparent), transparent 65%),
-    radial-gradient(800px 520px at 0% 100%, color-mix(in oklch, var(--text) 3%, transparent), transparent 70%),
+    radial-gradient(
+      1000px 480px at 70% -8%,
+      color-mix(in oklch, var(--a-champagne) 6%, transparent),
+      transparent 65%
+    ),
+    radial-gradient(
+      800px 520px at 0% 100%,
+      color-mix(in oklch, var(--text) 3%, transparent),
+      transparent 70%
+    ),
     var(--bg);
   background-attachment: fixed;
   color: var(--text);
 }
-
 
 /* ── Shell rail ───────────────────────────────────────────────────────── */
 .layout {
@@ -286,7 +293,10 @@ body {
   color: var(--text);
   font-weight: 650;
   box-shadow: inset 0 -2px 0 var(--a-champagne);
-  transition: background 180ms var(--a-ease), box-shadow 180ms var(--a-ease), color 180ms var(--a-ease);
+  transition:
+    background 180ms var(--a-ease),
+    box-shadow 180ms var(--a-ease),
+    color 180ms var(--a-ease);
 }
 
 .nav-item.active .ni-icon {
@@ -546,7 +556,9 @@ header.top .pill {
   background: var(--bg-elev);
   border-radius: var(--a-radius-card);
   box-shadow: var(--a-shadow-card);
-  transition: box-shadow 220ms var(--a-ease), border-color 220ms var(--a-ease);
+  transition:
+    box-shadow 220ms var(--a-ease),
+    border-color 220ms var(--a-ease);
 }
 
 .board:hover,
@@ -2147,7 +2159,9 @@ tbody td,
   border-radius: var(--a-radius-card);
   background: var(--bg-elev);
   box-shadow: var(--a-shadow-card);
-  transition: border-color 160ms var(--a-ease), box-shadow 160ms var(--a-ease);
+  transition:
+    border-color 160ms var(--a-ease),
+    box-shadow 160ms var(--a-ease);
 }
 
 .page[data-page="ath"] .ath-review-card:hover,
@@ -2349,9 +2363,8 @@ tbody td,
 
 /* Div-grid — avoids HTML table row-stretch fights with global tbody rules. */
 .page[data-page="metagraph"] .metagraph-grid {
-  --mg-cols: 4.25rem 12.5rem 11rem 11rem minmax(4.5rem, 1fr) minmax(5rem, 1fr)
-    minmax(5.5rem, 1fr) minmax(5.5rem, 1fr) minmax(6rem, 1fr) minmax(4.5rem, 1fr)
-    4.5rem;
+  --mg-cols: 4.25rem 12.5rem 11rem 11rem minmax(4.5rem, 1fr) minmax(5rem, 1fr) minmax(5.5rem, 1fr)
+    minmax(5.5rem, 1fr) minmax(6rem, 1fr) minmax(4.5rem, 1fr) 4.5rem;
   min-width: 1120px;
   width: 100%;
 }
@@ -2684,7 +2697,6 @@ tbody td,
   }
 }
 
-
 /* ── Atelier motion + type/radius enforcement ─────────────────────────── */
 @keyframes atelier-title-in {
   from {
@@ -2699,7 +2711,10 @@ tbody td,
 
 .nav-item,
 .sidebar .nav-item {
-  transition: background 180ms var(--a-ease), color 180ms var(--a-ease), box-shadow 180ms var(--a-ease);
+  transition:
+    background 180ms var(--a-ease),
+    color 180ms var(--a-ease),
+    box-shadow 180ms var(--a-ease);
 }
 
 .btn {
@@ -2708,7 +2723,10 @@ tbody td,
   border-radius: var(--a-radius-control);
   font-size: var(--a-t-cell);
   font-weight: 600;
-  transition: background 160ms var(--a-ease), border-color 160ms var(--a-ease), color 160ms var(--a-ease);
+  transition:
+    background 160ms var(--a-ease),
+    border-color 160ms var(--a-ease),
+    color 160ms var(--a-ease);
 }
 
 .btn.primary {
@@ -3542,7 +3560,9 @@ header.top .pill {
   font: 650 var(--a-t-nav)/1 var(--sans);
   box-shadow: var(--a-shadow-card);
   cursor: pointer;
-  transition: filter 160ms var(--a-ease), transform 160ms var(--a-ease);
+  transition:
+    filter 160ms var(--a-ease),
+    transform 160ms var(--a-ease);
 }
 
 .account-start:hover:not(:disabled) {
@@ -3609,7 +3629,6 @@ header.top .pill {
     margin-top: 24px;
   }
 }
-
 
 /* ── Pipeline (Atelier-native — not the concept instrument board) ────────
    Keep scoring selection / run panel behaviour. Visual language is ours:
@@ -3765,7 +3784,9 @@ header.top .pill {
   background: color-mix(in oklch, var(--bg) 45%, transparent);
   text-decoration: none;
   color: inherit;
-  transition: border-color 160ms var(--a-ease), background 160ms var(--a-ease);
+  transition:
+    border-color 160ms var(--a-ease),
+    background 160ms var(--a-ease);
 }
 
 .page[data-page="pipeline"] .pipeline-item:hover {
@@ -3816,7 +3837,10 @@ header.top .pill {
   content: none;
 }
 
-.page[data-page="pipeline"] .pipeline-column[data-pipeline-stage="evaluating"] .benchmark-progress progress,
+.page[data-page="pipeline"]
+  .pipeline-column[data-pipeline-stage="evaluating"]
+  .benchmark-progress
+  progress,
 .page[data-page="pipeline"] .scoring-detail progress {
   appearance: none;
   height: 4px;
@@ -3826,20 +3850,30 @@ header.top .pill {
   overflow: hidden;
 }
 
-.page[data-page="pipeline"] .pipeline-column[data-pipeline-stage="evaluating"] .benchmark-progress progress::-webkit-progress-value,
+.page[data-page="pipeline"]
+  .pipeline-column[data-pipeline-stage="evaluating"]
+  .benchmark-progress
+  progress::-webkit-progress-value,
 .page[data-page="pipeline"] .scoring-detail progress::-webkit-progress-value {
   background: var(--a-champagne);
   border-radius: 0;
   box-shadow: none;
 }
 
-.page[data-page="pipeline"] .pipeline-column[data-pipeline-stage="evaluating"] .benchmark-progress progress::-moz-progress-bar,
+.page[data-page="pipeline"]
+  .pipeline-column[data-pipeline-stage="evaluating"]
+  .benchmark-progress
+  progress::-moz-progress-bar,
 .page[data-page="pipeline"] .scoring-detail progress::-moz-progress-bar {
   background: var(--a-champagne);
 }
 
-.page[data-page="pipeline"] .pipeline-column[data-pipeline-stage="evaluating"] .benchmark-progress-text,
-.page[data-page="pipeline"] .pipeline-column[data-pipeline-stage="evaluating"] .benchmark-stage-label {
+.page[data-page="pipeline"]
+  .pipeline-column[data-pipeline-stage="evaluating"]
+  .benchmark-progress-text,
+.page[data-page="pipeline"]
+  .pipeline-column[data-pipeline-stage="evaluating"]
+  .benchmark-stage-label {
   font: 400 var(--a-t-caption)/1.35 var(--sans);
   color: var(--text-dim);
 }

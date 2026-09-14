@@ -723,10 +723,7 @@ export function EntityPanel(props: EntityPanelProps): JSX.Element {
                   settled={settled()}
                   total={props.entries().filter(isEligible).length}
                   currentBench={props.currentBench()}
-                  neuron={neuronForHotkey(
-                    latestChain(props.chain),
-                    entry().miner_hotkey,
-                  )}
+                  neuron={neuronForHotkey(latestChain(props.chain), entry().miner_hotkey)}
                 />
               )}
             </Match>
@@ -735,10 +732,7 @@ export function EntityPanel(props: EntityPanelProps): JSX.Element {
                 <ValidatorSummary
                   entry={v().entry}
                   activeBench={props.currentBench()}
-                  neuron={neuronForHotkey(
-                    latestChain(props.chain),
-                    v().hotkey,
-                  )}
+                  neuron={neuronForHotkey(latestChain(props.chain), v().hotkey)}
                 />
               )}
             </Match>
@@ -1143,16 +1137,8 @@ function MinerSummary(props: {
             {(neuron) => (
               <>
                 <Stat k="Chain UID" v={String(neuron().uid)} mono />
-                <Stat
-                  k="Neuron stake"
-                  v={neuron().stake.toFixed(3) + " τ"}
-                  mono
-                />
-                <Stat
-                  k="On-chain emission"
-                  v={neuron().emission.toFixed(4)}
-                  mono
-                />
+                <Stat k="Neuron stake" v={neuron().stake.toFixed(3) + " τ"} mono />
+                <Stat k="On-chain emission" v={neuron().emission.toFixed(4)} mono />
               </>
             )}
           </Show>
@@ -1521,10 +1507,7 @@ function ValidatorSummary(props: {
               <>
                 <Stat k="Chain UID" v={String(neuron().uid)} mono />
                 <Stat k="Neuron stake" v={neuron().stake.toFixed(3) + " τ"} mono />
-                <Stat
-                  k="Validator permit"
-                  v={neuron().validator_permit ? "yes" : "no"}
-                />
+                <Stat k="Validator permit" v={neuron().validator_permit ? "yes" : "no"} />
                 <Stat k="On-chain emission" v={neuron().emission.toFixed(4)} mono />
               </>
             )}

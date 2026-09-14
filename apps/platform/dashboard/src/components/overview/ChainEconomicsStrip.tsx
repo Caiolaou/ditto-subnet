@@ -51,8 +51,8 @@ export function ChainEconomicsStrip(props: {
           <p class="chain-economics-eyebrow">On-chain · SN118</p>
           <h2>Subnet economics</h2>
           <p>
-            Live metagraph totals and registration cost. Distinct from KOTH projected
-            emissions on the leaderboard.
+            Live metagraph totals and registration cost. Distinct from KOTH projected emissions on
+            the leaderboard.
           </p>
         </div>
         <Show when={!props.hideLink}>
@@ -68,10 +68,7 @@ export function ChainEconomicsStrip(props: {
           </a>
         </Show>
       </header>
-      <Show
-        when={snap()}
-        fallback={<p class="chain-economics-empty">Chain snapshot loading…</p>}
-      >
+      <Show when={snap()} fallback={<p class="chain-economics-empty">Chain snapshot loading…</p>}>
         {(data) => (
           <div class="chain-economics-grid" role="list">
             <div class="chain-econ-cell" role="listitem">
@@ -81,16 +78,13 @@ export function ChainEconomicsStrip(props: {
             <div class="chain-econ-cell" role="listitem">
               <span>α / TAO</span>
               <strong>
-                {data().market.alpha_tao == null
-                  ? "—"
-                  : data().market.alpha_tao!.toFixed(6)}
+                {data().market.alpha_tao == null ? "—" : data().market.alpha_tao!.toFixed(6)}
               </strong>
             </div>
             <div class="chain-econ-cell" role="listitem">
               <span>Total stake</span>
               <strong>
-                {data().totals.total_stake == null ||
-                !Number.isFinite(data().totals.total_stake)
+                {data().totals.total_stake == null || !Number.isFinite(data().totals.total_stake)
                   ? "—"
                   : data().totals.total_stake.toLocaleString(undefined, {
                       maximumFractionDigits: 1,
@@ -107,17 +101,14 @@ export function ChainEconomicsStrip(props: {
                 {data().totals.neuron_count}
                 <small>
                   {" "}
-                  · {data().totals.validator_count} val · {data().totals.miner_count}{" "}
-                  miner
+                  · {data().totals.validator_count} val · {data().totals.miner_count} miner
                 </small>
               </strong>
             </div>
             <div class="chain-econ-cell" role="listitem">
               <span>Tempo</span>
               <strong>
-                {data().epoch
-                  ? `${data().epoch!.tempo_blocks} blk`
-                  : "—"}
+                {data().epoch ? `${data().epoch!.tempo_blocks} blk` : "—"}
                 <Show when={data().block != null}>
                   <small> · block {data().block!.toLocaleString()}</small>
                 </Show>
