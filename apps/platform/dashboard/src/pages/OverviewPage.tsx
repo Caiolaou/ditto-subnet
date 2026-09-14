@@ -1,10 +1,10 @@
-// Overview: a masthead band over a two-pane split.
+// Overview: vitals first, then the evidence beside the crown, then the board.
 //
-// The band answers the three questions a visitor brings to the homepage in
-// one reading line — who reigns (champion), what state the subnet is in
-// (vitals ledger), and when the next payout lands (epoch clock). The timeline
-// and compact standings follow in a single page scroll, with the timeline
-// staying alongside the standings on desktop.
+// Reading rows, top to bottom. The vitals (four population cards over a strip
+// of score readings) say what state the subnet is in. Chain economics sits
+// under that (preview-only SN118 surface). The memory timeline shares a row
+// with who reigns and when the next payout lands. The leaderboard then takes
+// the full width, so standings are never squeezed into a rail.
 //
 // Standings are never hidden behind a click (ditto-platform#383): the board
 // is compact here through page-scoped CSS, and the full column set lives on
@@ -49,24 +49,26 @@ export function OverviewPage(
     props.epoch ? props.epoch() : weights ? latestEpoch(weights) : null;
   return (
     <section class="page active" data-page="overview">
-      <div class="overview-masthead" role="region" aria-label="Subnet at a glance">
-        <ChampionBox store={store} />
+      <div class="overview-vitals" role="region" aria-label="Subnet at a glance">
         <SnapshotLedger store={store} operations={props.operations} />
-        {/* The rail's clock is hidden while this page is on screen at desktop
-            widths (shell.css), so the reading appears once. On the phone the
-            sticky top bar keeps its compact clock and this one steps aside. */}
-        <div class="overview-clock">
-          <EpochClock epoch={epoch} id="overview-epoch-clock" />
-        </div>
       </div>
       <ChainEconomicsStrip chain={props.chain} />
       <div class="overview-split">
-        <aside class="overview-rail" role="region" aria-label="Memory timeline">
+        <div class="overview-rail" role="region" aria-label="Memory timeline">
           <HarnessComparison store={store} />
-        </aside>
-        <div class="overview-main" role="region" aria-label="Current rollout leaderboard">
-          <LeaderboardBlock mode="overview" />
         </div>
+        <aside class="overview-side" aria-label="Reigning champion and next payout">
+          <ChampionBox store={store} />
+          {/* The rail's clock is hidden while this page is on screen at desktop
+              widths (shell.css), so the reading appears once. On the phone the
+              sticky top bar keeps its compact clock and this one steps aside. */}
+          <div class="overview-clock">
+            <EpochClock epoch={epoch} id="overview-epoch-clock" />
+          </div>
+        </aside>
+      </div>
+      <div class="overview-main" role="region" aria-label="Current rollout leaderboard">
+        <LeaderboardBlock mode="overview" />
       </div>
     </section>
   );
