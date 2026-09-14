@@ -79,6 +79,7 @@ export function MetagraphPage(
   const [sortDir, setSortDir] = createSignal<"desc" | "asc">("desc");
   const [page, setPage] = createSignal(1);
 
+  /** Hotkey → leaderboard row. Agents are submitted under a hotkey. */
   const entryByHotkey = createMemo(() => {
     const map = new Map<string, LeaderboardEntry>();
     for (const entry of latest(props.leaderboard)?.entries ?? []) {
@@ -87,51 +88,17 @@ export function MetagraphPage(
     return map;
   });
 
-  /**
-   * Coldkey → best scored agent on that owner. One agent per coldkey: when a
-   * UID has no direct leaderboard hit, inherit the owner's best submission.
-   */
-  const enrichByColdkey = createMemo(() => {
-    const map = new Map<string, RowEnrichment>();
-    const snap = latest(chain());
-    if (!snap) return map;
-    for (const neuron of snap.metagraph) {
-      if (neuron.validator_permit) continue;
-      const entry = entryByHotkey().get(neuron.hotkey);
-      if (!entry) continue;
-      const score = entryScore(entry);
-      const next: RowEnrichment = {
-        agentName: publicDisplayName(entry.agent_name, entry.name_handle),
-        agentId: entry.agent_id ?? null,
-        avatarUrl: entry.avatar_url ?? null,
-        score,
-      };
-      const prev = map.get(neuron.coldkey);
-      if (!prev || (score != null && (prev.score == null || score > prev.score))) {
-        map.set(neuron.coldkey, next);
-      }
-    }
-    return map;
-  });
-
   function enrich(neuron: PublicNeuron): RowEnrichment {
-    const direct = entryByHotkey().get(neuron.hotkey);
-    if (direct) {
-      return {
-        agentName: publicDisplayName(direct.agent_name, direct.name_handle),
-        agentId: direct.agent_id ?? null,
-        avatarUrl: direct.avatar_url ?? null,
-        score: entryScore(direct),
-      };
+    const entry = entryByHotkey().get(neuron.hotkey);
+    if (!entry) {
+      return { agentName: null, agentId: null, avatarUrl: null, score: null };
     }
-    return (
-      enrichByColdkey().get(neuron.coldkey) ?? {
-        agentName: null,
-        agentId: null,
-        avatarUrl: null,
-        score: null,
-      }
-    );
+    return {
+      agentName: publicDisplayName(entry.agent_name, entry.name_handle),
+      agentId: entry.agent_id ?? null,
+      avatarUrl: entry.avatar_url ?? null,
+      score: entryScore(entry),
+    };
   }
 
   function displayName(neuron: PublicNeuron): string {
@@ -419,7 +386,8 @@ export function MetagraphPage(
         />
         <p class="metagraph-footnote">
           Miners only. Stake/emission are on-chain α. τ/day = emission × tempos/day × α/TAO.
-          Score is the KOTH official composite — click a row for miner history.
+          Agent, score, and avatar are matched by miner hotkey (submission key) — click a row
+          for miner history.
         </p>
       </div>
     </section>
