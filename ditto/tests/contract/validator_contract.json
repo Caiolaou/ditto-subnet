@@ -4349,6 +4349,30 @@
         "minimum": 0,
         "type": "integer"
       },
+      "crown_incumbent_agent_id": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "crown_mode": {
+        "anyOf": [
+          {
+            "const": "incumbent",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
       "dethrone_band_mode": {
         "anyOf": [
           {
@@ -4367,11 +4391,59 @@
         },
         "type": "array"
       },
+      "epoch_index": {
+        "anyOf": [
+          {
+            "minimum": 0,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
       "generated_at": {
         "anyOf": [
           {
             "format": "date-time",
             "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "ledger_digest": {
+        "anyOf": [
+          {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "pinned_at": {
+        "anyOf": [
+          {
+            "format": "date-time",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "pinned_block": {
+        "anyOf": [
+          {
+            "minimum": 0,
+            "type": "integer"
           },
           {
             "type": "null"
@@ -6167,6 +6239,59 @@
           "observed_at"
         ],
         "type": "object"
+      },
+      "WeightsFold": {
+        "properties": {
+          "champion_agent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "epoch_index": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "folded_at": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "ledger_digest": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "vector_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "vector_digest",
+          "folded_at"
+        ],
+        "type": "object"
       }
     },
     "properties": {
@@ -6309,6 +6434,17 @@
       "validator_hotkey": {
         "pattern": "^[1-9A-HJ-NP-Za-km-z]{47,48}$",
         "type": "string"
+      },
+      "weights_fold": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/WeightsFold"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
       }
     },
     "required": [

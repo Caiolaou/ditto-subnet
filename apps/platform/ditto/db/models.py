@@ -4006,6 +4006,86 @@ class ConfirmationScore(Base):
     )
 
 
+class LedgerEpochSnapshot(Base):
+    """One epoch-pinned validator ledger: the fold input for a chain epoch.
+
+    ``GET /scoring/scores`` used to be a time-based read, so two validators
+    polling one epoch apart -- or one ledger change apart -- folded different
+    pools and Yuma clipped whichever side lost the stake vote. A pin freezes the
+    exact ``LedgerEntry`` wire list, the fleet-synchronized mode markers and
+    the burn share once per ``SubnetEpochIndex``; every validator that reads
+    during that epoch receives the identical bytes (``ledger_digest``).
+
+    Rows are **append-only and immutable**: a new epoch inserts a new row and
+    nothing ever UPDATEs or deletes one, so a served pin can always be
+    reproduced from stored data alone. ``champion_agent_id`` is the crown the
+    Platform fold derived from this pin under its frozen modes;
+    ``incumbent_agent_id`` is the previous pin's champion resolved into this
+    pool through the owner family, which is what the incumbency mode hands the
+    validator fold. ``champion_owner_root`` is internal (never on any wire) and
+    exists only to resolve the next pin's incumbent.
+    """
+
+    __tablename__ = "ledger_epoch_snapshots"
+
+    snapshot_id: Mapped[UUID] = mapped_column(SaUUID(as_uuid=True), primary_key=True)
+    netuid: Mapped[int] = mapped_column(Integer, nullable=False)
+    epoch_index: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    """Chain ``SubnetEpochIndex`` the pin belongs to; unique per netuid."""
+
+    last_epoch_block: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    pinned_block: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    """Head block the schedule was read at when the pin was taken."""
+
+    pinned_block_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    pinned_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False
+    )
+    """When the pin was taken (UTC); the served ``generated_at``."""
+
+    bench_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    entries: Mapped[list] = mapped_column(_JSON_VARIANT, nullable=False)
+    """The exact ``LedgerEntry`` wire list, JSON-serialized."""
+
+    context: Mapped[dict] = mapped_column(_JSON_VARIANT, nullable=False)
+    """Frozen mode markers, burn share and the policy/fleet keys behind them."""
+
+    champion_agent_id: Mapped[UUID | None] = mapped_column(
+        SaUUID(as_uuid=True), nullable=True
+    )
+    champion_owner_root: Mapped[str | None] = mapped_column(Text, nullable=True)
+    incumbent_agent_id: Mapped[UUID | None] = mapped_column(
+        SaUUID(as_uuid=True), nullable=True
+    )
+    ledger_digest: Mapped[str] = mapped_column(Text, nullable=False)
+    """SHA-256 over the canonical JSON of ``entries`` plus the served markers."""
+
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "netuid", "epoch_index", name="ledger_epoch_snapshots_epoch_key"
+        ),
+        CheckConstraint(
+            "epoch_index >= 0", name="ledger_epoch_snapshots_epoch_index_check"
+        ),
+        CheckConstraint(
+            "pinned_block >= last_epoch_block",
+            name="ledger_epoch_snapshots_pinned_block_check",
+        ),
+        CheckConstraint(
+            "length(ledger_digest) = 64", name="ledger_epoch_snapshots_digest_check"
+        ),
+        Index(
+            "ledger_epoch_snapshots_recent_idx",
+            "netuid",
+            text("epoch_index DESC"),
+        ),
+    )
+
+
 class EfficiencyCohortSnapshot(Base):
     """One frozen relative token-efficiency cohort (bench_version >= 7).
 
@@ -4560,6 +4640,8 @@ class ValidatorHeartbeat(Base):
     stack: Mapped[dict | None] = mapped_column(_JSON_VARIANT, nullable=True)
     stack_health: Mapped[dict | None] = mapped_column(_JSON_VARIANT, nullable=True)
     updater_status: Mapped[dict | None] = mapped_column(_JSON_VARIANT, nullable=True)
+    weights_fold: Mapped[dict | None] = mapped_column(_JSON_VARIANT, nullable=True)
+    """Which pinned ledger the validator last folded (heartbeat protocol v27)."""
     benchmark_capacity: Mapped[dict | None] = mapped_column(
         _JSON_VARIANT, nullable=True
     )
@@ -5669,6 +5751,121 @@ class ScreenerShadowReview(Base):
         ),
         Index("screener_shadow_reviews_created_idx", "created_at"),
         Index("screener_shadow_reviews_agent_idx", "agent_id", "created_at"),
+    )
+
+
+class ScreenerFanoutShadowReview(Base):
+    """Durable, non-authoritative two-stage review and comparison record."""
+
+    __tablename__ = "screener_fanout_shadow_reviews"
+
+    shadow_id: Mapped[UUID] = mapped_column(SaUUID(as_uuid=True), primary_key=True)
+    agent_id: Mapped[UUID] = mapped_column(SaUUID(as_uuid=True), nullable=False)
+    attempt_id: Mapped[UUID] = mapped_column(SaUUID(as_uuid=True), nullable=False)
+    environment: Mapped[str] = mapped_column(Text, nullable=False)
+    artifact_sha256: Mapped[str] = mapped_column(Text, nullable=False)
+    policy_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    policy_manifest_profile: Mapped[str] = mapped_column(Text, nullable=False)
+    policy_manifest_rotation_id: Mapped[str] = mapped_column(Text, nullable=False)
+    policy_manifest_digest: Mapped[str] = mapped_column(Text, nullable=False)
+    settings_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    settings_scope: Mapped[str] = mapped_column(Text, nullable=False)
+    settings_checksum: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="queued")
+    outcome: Mapped[str | None] = mapped_column(Text)
+    baseline: Mapped[dict] = mapped_column(_JSON_VARIANT, nullable=False)
+    report: Mapped[dict | None] = mapped_column(_JSON_VARIANT)
+    disagrees_with_baseline: Mapped[bool | None] = mapped_column(Boolean)
+    coverage_complete: Mapped[bool | None] = mapped_column(Boolean)
+    error_code: Mapped[str | None] = mapped_column(Text)
+    provider: Mapped[str | None] = mapped_column(Text)
+    provider_resource_id: Mapped[str | None] = mapped_column(Text)
+    controller_epoch: Mapped[str | None] = mapped_column(Text)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    job_token_hash: Mapped[str | None] = mapped_column(Text)
+    job_token_expires_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True)
+    )
+    reserved_cost_microusd: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, server_default="0"
+    )
+    reported_cost_microusd: Mapped[int | None] = mapped_column(BigInteger)
+    reserved_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    unmetered: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    started_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        ForeignKeyConstraint(["agent_id"], ["agents.agent_id"], ondelete="CASCADE"),
+        ForeignKeyConstraint(
+            ["attempt_id"], ["screening_attempts.attempt_id"], ondelete="CASCADE"
+        ),
+        ForeignKeyConstraint(
+            ["settings_revision"],
+            ["screener_review_settings_revisions.revision"],
+            ondelete="RESTRICT",
+        ),
+        UniqueConstraint(
+            "attempt_id", name="screener_fanout_shadow_reviews_attempt_key"
+        ),
+        CheckConstraint(
+            "environment ~ '^[a-z][a-z0-9-]{0,31}$'",
+            name="screener_fanout_shadow_reviews_environment_check",
+        ),
+        CheckConstraint(
+            "artifact_sha256 ~ '^[0-9a-f]{64}$'",
+            name="screener_fanout_shadow_reviews_artifact_sha_check",
+        ),
+        CheckConstraint(
+            "policy_manifest_profile IN ('core', 'l1', 'l1_l2')",
+            name="screener_fanout_shadow_reviews_manifest_profile_check",
+        ),
+        CheckConstraint(
+            "policy_manifest_digest ~ '^[0-9a-f]{64}$'",
+            name="screener_fanout_shadow_reviews_manifest_digest_check",
+        ),
+        CheckConstraint(
+            "settings_checksum ~ '^[0-9a-f]{64}$'",
+            name="screener_fanout_shadow_reviews_settings_checksum_check",
+        ),
+        CheckConstraint(
+            "status IN ('queued', 'leased', 'running', 'succeeded', "
+            "'incomplete', 'skipped')",
+            name="screener_fanout_shadow_reviews_status_check",
+        ),
+        CheckConstraint(
+            "outcome IS NULL OR outcome IN ('no_findings', 'candidate', "
+            "'unresolved_candidate', 'critic_also_flagged', 'incomplete', 'skipped')",
+            name="screener_fanout_shadow_reviews_outcome_check",
+        ),
+        CheckConstraint(
+            "provider IS NULL OR provider IN ('targon', 'gcp')",
+            name="screener_fanout_shadow_reviews_provider_check",
+        ),
+        CheckConstraint(
+            "job_token_hash IS NULL OR job_token_hash ~ '^[0-9a-f]{64}$'",
+            name="screener_fanout_shadow_reviews_token_hash_check",
+        ),
+        CheckConstraint(
+            "reserved_cost_microusd >= 0 AND reported_cost_microusd >= 0",
+            name="screener_fanout_shadow_reviews_cost_check",
+        ),
+        Index(
+            "screener_fanout_shadow_reviews_queue_idx",
+            "environment",
+            "status",
+            "created_at",
+        ),
+        Index("screener_fanout_shadow_reviews_created_idx", "created_at", "shadow_id"),
+        Index("screener_fanout_shadow_reviews_reserved_idx", "reserved_at"),
     )
 
 

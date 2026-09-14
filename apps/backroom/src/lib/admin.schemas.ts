@@ -262,6 +262,22 @@ export const screenerReviewModelSchema = z.enum([
   'openai/gpt-5.6-sol',
 ])
 export const sourceReviewModelSchema = z.enum(['openai/gpt-5.6-luna'])
+export const fanoutShadowStatusSchema = z.enum([
+  'queued',
+  'leased',
+  'running',
+  'succeeded',
+  'incomplete',
+  'skipped',
+])
+export const fanoutShadowOutcomeSchema = z.enum([
+  'no_findings',
+  'candidate',
+  'unresolved_candidate',
+  'critic_also_flagged',
+  'incomplete',
+  'skipped',
+])
 export const policyManifestProfileSchema = z.enum(['core', 'l1', 'l1_l2'])
 export const screenerReviewSettingsSchema = z
   .object({
@@ -284,6 +300,19 @@ export const screenerReviewSettingsSchema = z
     adjudicator_model: z.literal('z-ai/glm-5.3-flash').default('z-ai/glm-5.3-flash'),
     adjudicator_max_steps: z.number().int().min(1).max(1024).default(128),
     adjudicator_timeout_seconds: z.number().int().min(60).max(3_600).default(600),
+    fanout_shadow_mode: z.enum(['off', 'shadow']).default('off'),
+    fanout_shadow_image_source_sha: z.string().regex(/^[0-9a-f]{40}$/).default('0'.repeat(40)),
+    fanout_shadow_model: z.literal('z-ai/glm-5.3-flash').default('z-ai/glm-5.3-flash'),
+    fanout_shadow_concurrency: z.number().int().min(1).max(4).default(2),
+    fanout_shadow_max_steps: z.number().int().min(1).max(8).default(4),
+    fanout_shadow_max_groups: z.number().int().min(1).max(8).default(4),
+    fanout_shadow_max_requests: z.number().int().min(1).max(64).default(40),
+    fanout_shadow_max_total_tokens: z.number().int().min(10_000).max(2_000_000).default(1_500_000),
+    fanout_shadow_timeout_seconds: z.number().int().min(60).max(1_800).default(900),
+    fanout_shadow_max_cost_usd: z.number().positive().max(10).default(3),
+    fanout_shadow_daily_cost_usd: z.number().positive().max(100).default(20),
+    fanout_shadow_global_concurrency: z.literal(1).default(1),
+    fanout_shadow_reserved_targon_slots: z.number().int().min(1).max(4).default(1),
     max_input_tokens: z.number().int().min(1).max(1_000_000),
     max_output_tokens: z.number().int().min(1).max(128_000),
     max_completion_tokens: z.number().int().min(1).max(128_000),
@@ -304,6 +333,16 @@ export const screenerReviewSettingsSchema = z
         code: 'custom',
         message: 'Completion budget cannot exceed output budget',
         path: ['max_completion_tokens'],
+      })
+    }
+    if (
+      value.fanout_shadow_mode === 'shadow' &&
+      value.fanout_shadow_image_source_sha === '0'.repeat(40)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Shadow mode requires the exact trusted image source SHA',
+        path: ['fanout_shadow_image_source_sha'],
       })
     }
   })
@@ -415,6 +454,61 @@ export const screenerPolicyManifestControlSchema = z.object({
 
 export type ScreenerReviewControl = z.infer<typeof screenerReviewControlSchema>
 export type ScreenerReviewSettings = z.infer<typeof screenerReviewSettingsSchema>
+
+export const screenerFanoutShadowInputSchema = z.object({
+  status: fanoutShadowStatusSchema.optional(),
+  limit: z.number().int().min(1).max(100).default(50),
+  offset: z.number().int().min(0).default(0),
+})
+
+export const screenerFanoutShadowReviewSchema = z.object({
+  shadow_id: z.string().uuid(),
+  agent_id: z.string().uuid(),
+  attempt_id: z.string().uuid(),
+  artifact_sha256: z.string().regex(/^[0-9a-f]{64}$/),
+  policy_version: z.number().int().positive(),
+  settings_revision: z.number().int().nonnegative(),
+  settings_scope: z.string(),
+  settings_checksum: z.string().regex(/^[0-9a-f]{64}$/),
+  status: fanoutShadowStatusSchema,
+  outcome: fanoutShadowOutcomeSchema.nullable(),
+  baseline: z.record(z.string(), z.unknown()),
+  report: z.record(z.string(), z.unknown()).nullable(),
+  disagrees_with_baseline: z.boolean().nullable(),
+  coverage_complete: z.boolean().nullable(),
+  error_code: z.string().nullable(),
+  provider: z.string().nullable(),
+  reserved_cost_usd: z.number().nonnegative(),
+  reported_cost_usd: z.number().nonnegative().nullable(),
+  unmetered: z.boolean(),
+  reserved_at: z.string().nullable(),
+  created_at: z.string(),
+  started_at: z.string().nullable(),
+  completed_at: z.string().nullable(),
+})
+
+export const screenerFanoutShadowResponseSchema = z.object({
+  metrics: z.object({
+    total: z.number().int().nonnegative(),
+    queued: z.number().int().nonnegative(),
+    running: z.number().int().nonnegative(),
+    succeeded: z.number().int().nonnegative(),
+    incomplete: z.number().int().nonnegative(),
+    skipped: z.number().int().nonnegative(),
+    compared: z.number().int().nonnegative(),
+    disagreements: z.number().int().nonnegative(),
+    incomplete_coverage: z.number().int().nonnegative(),
+    rolling_24h_reserved_cost_usd: z.number().nonnegative(),
+    rolling_24h_reported_cost_usd: z.number().nonnegative(),
+    rolling_24h_unmetered: z.number().int().nonnegative(),
+  }),
+  items: z.array(screenerFanoutShadowReviewSchema),
+  count: z.number().int().nonnegative(),
+  returned: z.number().int().nonnegative(),
+  limit: z.number().int().min(1).max(100),
+  offset: z.number().int().nonnegative(),
+  has_more: z.boolean(),
+})
 
 const screenerProviderSchema = z.enum(['gcp', 'targon', 'hetzner', 'home', 'test'])
 const capacityProviderSchema = z.enum(['hetzner', 'targon', 'gcp'])
@@ -1228,6 +1322,15 @@ const checkCohortCeiling = (
 const continualRetestSettingsBaseSchema = z.object({
   aggregate_mode: z.enum(['disabled', 'fleet_ready', 'enabled']),
   tie_weighting_mode: z.enum(['disabled', 'fleet_ready']).default('disabled'),
+  // Serving change only: one frozen ledger per chain epoch so every validator
+  // folds identical bytes. Like wave_membership, the read default mirrors the
+  // platform's shipped default (`epoch`); a build old enough to omit the field
+  // is the time-based read, which CONTINUAL_RETEST_EXTENDED_FIELDS carries as
+  // the `live` legacy value, and `field_support` tells the two apart.
+  ledger_pin_mode: z.enum(['live', 'epoch']).default('epoch'),
+  // Fold change behind fleet protocol 27: defend the crown from the served
+  // incumbent instead of re-deriving it from the earliest lineage every read.
+  crown_incumbent_mode: z.enum(['disabled', 'fleet_ready']).default('disabled'),
   idle_retests_enabled: z.boolean(),
   rollout_standdown: z
     .enum(['off', 'capable_validators', 'all'])
@@ -1281,6 +1384,8 @@ export const continualRetestSettingsSchema =
 export const continualRetestSettingsWriteSchema = continualRetestSettingsBaseSchema
   .extend({
     tie_weighting_mode: z.enum(['disabled', 'fleet_ready']),
+    ledger_pin_mode: z.enum(['live', 'epoch']),
+    crown_incumbent_mode: z.enum(['disabled', 'fleet_ready']),
     wave_membership: z.enum(['strict', 'participants', 'per_agent']),
     retest_cohort_size: z.number().int().min(EMISSION_SET_SIZE).max(MAX_RETEST_COHORT_SIZE),
     retest_eligibility_mode: z.enum(['fixed', 'statistical']),
@@ -1304,6 +1409,52 @@ export const continualRetestSettingsRevisionSchema = z.object({
   checksum: z.string().regex(/^[0-9a-f]{64}$/),
 })
 
+export const ledgerPinStatusSchema = z.object({
+  epoch_index: z.number().int().nonnegative(),
+  last_epoch_block: z.number().int().nonnegative(),
+  pinned_block: z.number().int().nonnegative(),
+  pinned_at: z.string(),
+  bench_version: z.number().int().positive(),
+  ledger_digest: z.string().regex(/^[0-9a-f]{64}$/),
+  entry_count: z.number().int().nonnegative(),
+  champion_agent_id: z.string().uuid().nullable().default(null),
+  incumbent_agent_id: z.string().uuid().nullable().default(null),
+})
+
+const ledgerActorSchema = z.object({
+  agent_id: z.string().uuid(),
+  miner_hotkey: z.string().min(1).max(64),
+  agent_name: z.string().nullable().default(null),
+  agent_version: z.number().int().positive().nullable().default(null),
+})
+
+export const ledgerEpochSnapshotsSchema = z.object({
+  generated_at: z.string(),
+  mode: z.enum(['epoch', 'live']),
+  count: z.number().int().nonnegative(),
+  epochs: z.array(
+    z.object({
+      epoch_index: z.number().int().nonnegative(),
+      last_epoch_block: z.number().int().nonnegative(),
+      pinned_block: z.number().int().nonnegative(),
+      pinned_at: z.string(),
+      bench_version: z.number().int().positive(),
+      entry_count: z.number().int().nonnegative(),
+      ledger_digest: z.string().regex(/^[0-9a-f]{64}$/),
+      crown_mode: z.literal('incumbent').nullable().default(null),
+      champion: ledgerActorSchema.nullable().default(null),
+      incumbent: ledgerActorSchema.nullable().default(null),
+      crown_changed: z.boolean().default(false),
+      recipients: z.array(
+        ledgerActorSchema.extend({
+          role: z.enum(['champion', 'joint_champion', 'tail']),
+          share_of_miner_pool: z.number().positive().max(1),
+        }),
+      ),
+    }),
+  ),
+})
+
 export const effectiveContinualRetestSettingsSchema = z.object({
   revision: z.number().int().nonnegative(),
   scope: z.string(),
@@ -1314,6 +1465,10 @@ export const effectiveContinualRetestSettingsSchema = z.object({
   aggregate_active: z.boolean(),
   tie_weighting_fleet_ready: z.boolean().default(false),
   tie_weighting_active: z.boolean().default(false),
+  crown_incumbent_fleet_ready: z.boolean().default(false),
+  crown_incumbent_active: z.boolean().default(false),
+  crown_incumbent_required_protocol: z.number().int().positive().default(27),
+  ledger_pin: ledgerPinStatusSchema.nullable().default(null),
   max_age_seconds: z.number().nonnegative(),
   open_rollout_desired_version: z.number().int().positive().nullable().default(null),
   rollout_standdown_active: z.boolean().default(false),
@@ -1375,6 +1530,21 @@ export const CONTINUAL_RETEST_EXTENDED_FIELDS: ReadonlyArray<ContinualRetestExte
     label: 'a tie-aware weight policy',
     legacyValue: () => 'disabled',
     legacyBehaviour: () => 'fixed KOTH rank shares remain in effect',
+  },
+  {
+    field: 'ledger_pin_mode',
+    label: 'an epoch-pinned ledger mode',
+    // A build without the field serves the time-based read on every poll.
+    legacyValue: () => 'live',
+    legacyBehaviour: () =>
+      'validators keep folding a live time-based ledger read, so a ledger change can split the fleet',
+  },
+  {
+    field: 'crown_incumbent_mode',
+    label: 'a crown incumbency policy',
+    legacyValue: () => 'disabled',
+    legacyBehaviour: () =>
+      'the fold re-derives the champion from the earliest lineage on every read',
   },
   {
     field: 'retest_cohort_size',
@@ -6498,6 +6668,182 @@ export const openAthReviewResponseSchema = z.object({
   // Defaults false while the platform API rollout catches up.
   reopened: z.boolean().default(false),
 })
+
+// Batched ATH rulings: presigned upload -> dry-run preview -> guarded execute.
+// The document shape is the Platform wire shape (snake_case) on purpose: the
+// same JSON an operator uploads through the presigned PUT is accepted inline,
+// so a review write-up's rulings paste straight into either path.
+export const ATH_RULINGS_CONFIRMATION = 'APPLY ATH RULINGS BATCH'
+export const ATH_RULINGS_MAX_ITEMS = 50
+
+type GeneratedAthRulingsUploadResponse =
+  PlatformComponents['schemas']['AdminAthRulingsUploadResponse']
+type GeneratedAthRulingsBoardProjection =
+  PlatformComponents['schemas']['AdminAthRulingsBoardProjection']
+type GeneratedAthRulingPreviewItem = PlatformComponents['schemas']['AdminAthRulingPreviewItem']
+type GeneratedAthRulingsPreviewResponse =
+  PlatformComponents['schemas']['AdminAthRulingsPreviewResponse']
+type GeneratedAthRulingExecuteItem = PlatformComponents['schemas']['AdminAthRulingExecuteItem']
+type GeneratedAthRulingsExecuteResponse =
+  PlatformComponents['schemas']['AdminAthRulingsExecuteResponse']
+
+export const athRulingActionSchema = z.enum(['open', 'clear', 'reject'])
+
+export const athRulingDispositionSchema = z.enum([
+  'ready',
+  'already_applied',
+  'stale_guard',
+  'conflict',
+  'not_found',
+  'invalid',
+])
+
+// ``path:line`` or ``path:line-line`` -- the citation every reject carries.
+export const athRulingEvidenceReferenceSchema = z
+  .string()
+  .trim()
+  .min(3)
+  .max(512)
+  .regex(/^[^\s:]+(?:\/[^\s:]+)*:\d+(?:-\d+)?$/)
+
+export const athRulingSchema = z.object({
+  action: athRulingActionSchema,
+  agent_id: z.string().uuid(),
+  expected_sha256: z.string().regex(/^[0-9a-f]{64}$/),
+  expected_score_count: z.number().int().nonnegative(),
+  reason: auditReasonSchema(3),
+  evidence_references: z.array(athRulingEvidenceReferenceSchema).max(64).default([]),
+})
+
+const uniqueRulingAgents = (
+  rulings: ReadonlyArray<{ agent_id: string }> | undefined,
+  context: z.RefinementCtx,
+) => {
+  if (!rulings) return
+  const ids = rulings.map((ruling) => ruling.agent_id)
+  if (new Set(ids).size !== ids.length) {
+    context.addIssue({
+      code: 'custom',
+      path: ['rulings'],
+      message: 'Each agent can appear only once per batch',
+    })
+  }
+}
+
+export const athRulingsUploadResponseSchema = z.object({
+  bucket: z.string(),
+  key: z.string(),
+  url: z.string(),
+  method: z.literal('PUT'),
+  content_type: z.string(),
+  expires_in: z.number().int().positive(),
+  max_bytes: z.number().int().positive(),
+} satisfies PlatformResponseShape<GeneratedAthRulingsUploadResponse>)
+
+export const previewAthRulingsBatchInputSchema = z
+  .object({
+    uploadKey: z.string().min(1).max(512).optional(),
+    rulings: z.array(athRulingSchema).min(1).max(ATH_RULINGS_MAX_ITEMS).optional(),
+    source: z.string().max(512).optional(),
+  })
+  .superRefine((value, context) => {
+    if ((value.uploadKey === undefined) === (value.rulings === undefined)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['uploadKey'],
+        message: 'Provide exactly one of uploadKey or rulings',
+      })
+    }
+    uniqueRulingAgents(value.rulings, context)
+  })
+
+export const athRulingsBoardProjectionSchema = z.object({
+  bench_version: z.number().int().positive(),
+  read_at: z.string(),
+  ranked_count: z.number().int().nonnegative(),
+  champion_agent_id: z.string().uuid().nullable(),
+  champion_hotkey: z.string().nullable(),
+  champion_score: z.number().nullable(),
+  raw_leader_agent_id: z.string().uuid().nullable(),
+  raw_leader_score: z.number().nullable(),
+  fingerprint: z.string(),
+} satisfies PlatformResponseShape<GeneratedAthRulingsBoardProjection>)
+
+export const athRulingPreviewItemSchema = z.object({
+  index: z.number().int().nonnegative(),
+  action: athRulingActionSchema,
+  agent_id: z.string().uuid(),
+  agent_name: z.string().nullable().default(null),
+  agent_version: z.number().int().nullable().default(null),
+  miner_hotkey: z.string().nullable().default(null),
+  agent_status: z.string().nullable().default(null),
+  artifact_sha256: z.string().nullable().default(null),
+  score_count: z.number().int().nonnegative().nullable().default(null),
+  ok: z.boolean(),
+  disposition: athRulingDispositionSchema,
+  stale_guard: z.boolean(),
+  would_change_crown: z.boolean(),
+  conflict_reason: z.string().nullable().default(null),
+  steps: z.array(athRulingActionSchema).default([]),
+  reason: z.string(),
+  evidence_references: z.array(z.string()).default([]),
+  message: z.string(),
+} satisfies PlatformResponseShape<GeneratedAthRulingPreviewItem>)
+
+export const athRulingsPreviewResponseSchema = z.object({
+  preview_token: z.string(),
+  expires_at: z.string(),
+  rulings_sha256: z.string(),
+  upload_key: z.string().nullable().default(null),
+  source: z.string().nullable().default(null),
+  board: athRulingsBoardProjectionSchema,
+  items: z.array(athRulingPreviewItemSchema),
+  ready_count: z.number().int().nonnegative(),
+  already_applied_count: z.number().int().nonnegative(),
+  blocked_count: z.number().int().nonnegative(),
+  crown_moving_count: z.number().int().nonnegative(),
+} satisfies PlatformResponseShape<GeneratedAthRulingsPreviewResponse>)
+
+export const executeAthRulingsBatchInputSchema = z
+  .object({
+    previewToken: z.string().min(32).max(16384),
+    confirmation: z.literal(ATH_RULINGS_CONFIRMATION),
+    // Required when the batch was previewed inline: the token binds the
+    // rulings digest, not their bytes.
+    rulings: z.array(athRulingSchema).min(1).max(ATH_RULINGS_MAX_ITEMS).optional(),
+  })
+  .superRefine((value, context) => uniqueRulingAgents(value.rulings, context))
+
+export const athRulingExecuteItemSchema = z.object({
+  index: z.number().int().nonnegative(),
+  action: athRulingActionSchema,
+  agent_id: z.string().uuid(),
+  status: z.enum(['applied', 'already_applied', 'failed']),
+  agent_status: z.string().nullable().default(null),
+  would_change_crown: z.boolean(),
+  steps_applied: z.array(athRulingActionSchema).default([]),
+  // False on an applied row: the ruling landed, only the audit annotation
+  // failed. Never re-run it.
+  annotated: z.boolean().default(false),
+  message: z.string(),
+} satisfies PlatformResponseShape<GeneratedAthRulingExecuteItem>)
+
+export const athRulingsExecuteResponseSchema = z.object({
+  batch_id: z.string().uuid(),
+  rulings_sha256: z.string(),
+  upload_key: z.string().nullable().default(null),
+  board_before: athRulingsBoardProjectionSchema,
+  board_after: athRulingsBoardProjectionSchema,
+  items: z.array(athRulingExecuteItemSchema),
+  applied_count: z.number().int().nonnegative(),
+  already_applied_count: z.number().int().nonnegative(),
+  failed_count: z.number().int().nonnegative(),
+} satisfies PlatformResponseShape<GeneratedAthRulingsExecuteResponse>)
+
+export type AthRulingsDocument = {
+  rulings: Array<z.input<typeof athRulingSchema>>
+  source?: string
+}
 
 // Per-file diff between a held agent and the agent it was matched against, so
 // an operator can see which files were copied verbatim vs. altered inline.

@@ -63,6 +63,7 @@ from ditto.api_models.validator_capabilities import (
     ValidatorStackIdentity,
 )
 from ditto.api_models.validator_updater import ValidatorUpdaterStatus
+from ditto.api_models.validator_weights_fold import WeightsFold
 from ditto_screening_protocol.bench_v9 import (
     V9AuthoritativeToolGate as V9AuthoritativeToolGate,
 )
@@ -676,6 +677,17 @@ class ValidatorHeartbeatRequest(BaseModel):
             description="Signed sanitized managed-updater state under protocol v23.",
         ),
     ] = None
+    weights_fold: Annotated[
+        WeightsFold | None,
+        Field(
+            default=None,
+            description=(
+                "Which pinned ledger this validator last folded and the digest of "
+                "the weight vector it committed, under heartbeat protocol v27. "
+                "Null before the first fold of the process or on older validators."
+            ),
+        ),
+    ] = None
     timestamp: Annotated[
         int, Field(ge=0, description="Validator-reported Unix timestamp (UTC).")
     ]
@@ -686,6 +698,12 @@ class ValidatorHeartbeatRequest(BaseModel):
             description=("sr25519 signature over the canonical v1 heartbeat payload."),
         ),
     ]
+
+    @model_validator(mode="after")
+    def weights_fold_requires_v27(self) -> ValidatorHeartbeatRequest:
+        if self.weights_fold is not None and self.protocol_version < 27:
+            raise ValueError("weights fold requires heartbeat protocol v27")
+        return self
 
     @model_validator(mode="after")
     def validate_protocol_fields(self) -> ValidatorHeartbeatRequest:
@@ -1807,6 +1825,81 @@ class LedgerResponse(BaseModel):
             "that ignores this field folds exactly as it did."
         ),
     )
+
+    epoch_index: Annotated[
+        int | None,
+        Field(
+            default=None,
+            ge=0,
+            exclude_if=lambda value: value is None,
+            description=(
+                "Chain SubnetEpochIndex this ledger was pinned for. Present only "
+                "when the platform served an epoch-pinned ledger: every validator "
+                "reading during that epoch receives byte-identical entries and "
+                "markers, so a ledger change lands for the whole fleet at the "
+                "next pin instead of splitting it on who read first. Absent on a "
+                "live (unpinned) read."
+            ),
+        ),
+    ] = None
+    pinned_block: Annotated[
+        int | None,
+        Field(
+            default=None,
+            ge=0,
+            exclude_if=lambda value: value is None,
+            description="Head block the pin's epoch schedule was read at.",
+        ),
+    ] = None
+    pinned_at: Annotated[
+        datetime | None,
+        Field(
+            default=None,
+            exclude_if=lambda value: value is None,
+            description="When the pin was taken (UTC); equals generated_at on a pin.",
+        ),
+    ] = None
+    ledger_digest: Annotated[
+        str | None,
+        Field(
+            default=None,
+            pattern=r"^[0-9a-f]{64}$",
+            exclude_if=lambda value: value is None,
+            description=(
+                "SHA-256 over the canonical JSON of entries plus the served fold "
+                "markers. Two validators folding the same pin hold the same "
+                "digest; it is what a validator echoes back so the platform can "
+                "show which snapshot each weight vector came from."
+            ),
+        ),
+    ] = None
+    crown_mode: Annotated[
+        Literal["incumbent"] | None,
+        Field(
+            default=None,
+            exclude_if=lambda value: value is None,
+            description=(
+                "Consensus activation marker for crown incumbency. When set to "
+                "incumbent, the fold starts its champion walk from "
+                "crown_incumbent_agent_id (the previous epoch's champion, "
+                "resolved through its owner family) and moves the crown only "
+                "when a challenger clears the dethrone band over it. Absent "
+                "keeps the historical earliest-lineage walk, in which a senior "
+                "claimant inside the band retakes the crown on every read."
+            ),
+        ),
+    ] = None
+    crown_incumbent_agent_id: Annotated[
+        UUID | None,
+        Field(
+            default=None,
+            exclude_if=lambda value: value is None,
+            description=(
+                "The incumbent the fold defends when crown_mode is incumbent; "
+                "always one of entries. Absent whenever crown_mode is absent."
+            ),
+        ),
+    ] = None
 
     model_config = ConfigDict(
         json_schema_extra={

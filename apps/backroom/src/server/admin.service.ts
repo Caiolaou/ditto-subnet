@@ -18,6 +18,11 @@ import {
   openAthReviewInputSchema,
   searchAthPrecedentsInputSchema,
   openAthReviewResponseSchema,
+  athRulingsUploadResponseSchema,
+  previewAthRulingsBatchInputSchema,
+  athRulingsPreviewResponseSchema,
+  executeAthRulingsBatchInputSchema,
+  athRulingsExecuteResponseSchema,
   resolveCopyReviewInputSchema,
   resolveCopyReviewResponseSchema,
   baselineDiffFileDetailSchema,
@@ -156,6 +161,7 @@ import {
   burnSettingsRevisionSchema,
   setBurnSettingsInputSchema,
   continualRetestSettingsForPlatform,
+  ledgerEpochSnapshotsSchema,
   parseContinualRetestSettingsControl,
   setContinualRetestSettingsInputSchema,
   inferenceConcurrencySettingsControlSchema,
@@ -189,6 +195,8 @@ import {
   unbanHotkeyInputSchema,
   screenerReviewControlSchema,
   screenerReviewRevisionSchema,
+  screenerFanoutShadowInputSchema,
+  screenerFanoutShadowResponseSchema,
   screenerPolicyManifestControlSchema,
   copyCourtControlSchema,
   applyCopyCourtSettingsInputSchema,
@@ -479,6 +487,18 @@ export async function selectActiveBenchmark(actor: string, rawInput: unknown) {
 export async function fetchScreenerReviewControl() {
   const payload = await platformAdminRequest('/api/v1/admin/screener-review-settings')
   return screenerReviewControlSchema.parse(payload)
+}
+
+export async function fetchScreenerFanoutShadow(rawInput: unknown = {}) {
+  const input = screenerFanoutShadowInputSchema.parse(rawInput)
+  const params = new URLSearchParams()
+  if (input.status !== undefined) params.set('status', input.status)
+  params.set('limit', String(input.limit))
+  params.set('offset', String(input.offset))
+  const payload = await platformAdminRequest(
+    `/api/v1/admin/screener-fanout-shadow?${params.toString()}`,
+  )
+  return screenerFanoutShadowResponseSchema.parse(payload)
 }
 
 export async function fetchCopyCourtControl() {
@@ -1424,6 +1444,15 @@ export async function fetchValidatorFleetObservability() {
   return validatorFleetObservabilitySchema.parse(payload)
 }
 
+export async function fetchLedgerEpochSnapshots(limit = 24) {
+  const bounded = Math.min(100, Math.max(1, Math.trunc(limit)))
+  const payload = await platformAdminRequest(`/api/v1/public/ledger-epochs?limit=${bounded}`, {
+    timeoutMs: 15_000,
+    retries: 1,
+  })
+  return ledgerEpochSnapshotsSchema.parse(payload)
+}
+
 export async function fetchValidatorWeightDiagnostics(rawInput: unknown) {
   const input = validatorWeightDiagnosticsInputSchema.parse(rawInput)
   const suffix = input.validatorUid === undefined ? '' : `?validator_uid=${input.validatorUid}`
@@ -1732,6 +1761,47 @@ export async function openAthReview(rawInput: unknown, actor: string) {
   )
   invalidateCopyReviewsCache()
   return openAthReviewResponseSchema.parse(payload)
+}
+
+export async function createAthRulingsUpload(actor: string) {
+  const payload = await platformAdminRequest('/api/v1/admin/ath-rulings/upload-url', {
+    method: 'POST',
+    actor,
+    body: {},
+  })
+  return athRulingsUploadResponseSchema.parse(payload)
+}
+
+export async function previewAthRulingsBatch(rawInput: unknown, actor: string) {
+  const input = previewAthRulingsBatchInputSchema.parse(rawInput)
+  const payload = await platformAdminRequest('/api/v1/admin/ath-rulings/batch-preview', {
+    method: 'POST',
+    actor,
+    body: {
+      upload_key: input.uploadKey ?? null,
+      rulings: input.rulings ?? null,
+      source: input.source ?? null,
+    },
+    // Fifty rows each re-read the board; give the dry run room.
+    timeoutMs: 60_000,
+  })
+  return athRulingsPreviewResponseSchema.parse(payload)
+}
+
+export async function executeAthRulingsBatch(rawInput: unknown, actor: string) {
+  const input = executeAthRulingsBatchInputSchema.parse(rawInput)
+  const payload = await platformAdminRequest('/api/v1/admin/ath-rulings/batch-execute', {
+    method: 'POST',
+    actor,
+    body: {
+      preview_token: input.previewToken,
+      confirmation: input.confirmation,
+      rulings: input.rulings ?? null,
+    },
+    timeoutMs: 120_000,
+  })
+  invalidateCopyReviewsCache()
+  return athRulingsExecuteResponseSchema.parse(payload)
 }
 
 export async function fetchScreeningSubmissions(

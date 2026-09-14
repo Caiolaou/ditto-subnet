@@ -5,6 +5,9 @@ from __future__ import annotations
 from ditto.api_server.endpoints.admin_artifact_release_settings import (
     router as admin_artifact_release_settings_router,
 )
+from ditto.api_server.endpoints.admin_ath_rulings import (
+    router as admin_ath_rulings_router,
+)
 from ditto.api_server.endpoints.admin_attestation import (
     router as admin_attestation_router,
 )
@@ -92,6 +95,9 @@ from ditto.api_server.endpoints.admin_scoring_readiness import (
 from ditto.api_server.endpoints.admin_screener_capacity import (
     router as admin_screener_capacity_router,
 )
+from ditto.api_server.endpoints.admin_screener_fanout_shadow import (
+    router as admin_screener_fanout_shadow_router,
+)
 from ditto.api_server.endpoints.admin_screener_policy_activation import (
     router as admin_screener_policy_activation_router,
 )
@@ -173,6 +179,7 @@ __all__ = [
     "health_router",
     "inference_router",
     "admin_artifact_release_settings_router",
+    "admin_ath_rulings_router",
     "admin_attestation_router",
     "admin_benchmark_rollout_router",
     "admin_burn_settings_router",
@@ -204,6 +211,7 @@ __all__ = [
     "admin_retirement_router",
     "admin_scoring_readiness_router",
     "admin_screener_review_settings_router",
+    "admin_screener_fanout_shadow_router",
     "admin_screener_capacity_router",
     "admin_screener_policy_activation_router",
     "admin_submission_settings_router",

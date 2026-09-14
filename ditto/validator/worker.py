@@ -57,6 +57,10 @@ from ditto.api_models.validator_confirmation import (
     V9ConfirmationLongMemDiagnostics,
     V9ConfirmationScorerReadiness,
 )
+from ditto.api_models.validator_weights_fold import (
+    WeightsFold,
+    weights_vector_digest,
+)
 from ditto.chain import ChainError
 from ditto.validator.build_info import validator_build_info
 from ditto.validator.config import lease_budget_seconds
@@ -181,6 +185,21 @@ def _ledger_ceiling_band_clamp(ledger: LedgerResponse) -> bool:
     same epoch. Fails closed to the historical uncapped band.
     """
     return getattr(ledger, "dethrone_band_mode", None) == "headroom_capped"
+
+
+def _ledger_crown_incumbent(ledger: LedgerResponse) -> UUID | None:
+    """The served incumbent the fold defends, or ``None`` for the classic walk.
+
+    Present only on an epoch-pinned ledger whose ``crown_mode`` is
+    ``incumbent`` -- withheld until every recently-live weight setter reports
+    protocol 27 and the operator has enabled the policy. An id without the
+    marker, or a marker without an id, is treated as absent, so a partial or
+    older Platform response folds exactly as before.
+    """
+    if getattr(ledger, "crown_mode", None) != "incumbent":
+        return None
+    incumbent = getattr(ledger, "crown_incumbent_agent_id", None)
+    return incumbent if isinstance(incumbent, UUID) else None
 
 
 def _ledger_active_bench_version(ledger: LedgerResponse) -> int | None:
@@ -462,6 +481,8 @@ class _WeightOutcome:
     weights: dict[str, float] = field(default_factory=dict)
     submitted: bool = False
     king_fingerprint: tuple[str, UUID, float, int | None] | None = None
+    fold: WeightsFold | None = None
+    """What this fold consumed and produced, echoed on the heartbeat."""
 
 
 @dataclass(frozen=True)
@@ -628,6 +649,7 @@ class ValidatorWorker:
         # so their check/set transitions are atomic within this event loop.
         self._scoring_active = False
         self._weights_active = False
+        self._last_weights_fold: WeightsFold | None = None
         self._longmem_active = False
         # A failed ticket hand-back is an ambiguous lease transition: local
         # execution is over, but Platform may still own the exact deadline.
@@ -1186,6 +1208,7 @@ class ValidatorWorker:
                 leaderboard=outcome.leaderboard,
                 weights=outcome.weights,
                 weights_submitted=outcome.submitted,
+                weights_fold=outcome.fold,
                 weights_due=set_weights,
                 burn_hotkey=self._config.burn_hotkey,
                 onchain_last_update_block=onchain_last_update_block,
@@ -1432,6 +1455,7 @@ class ValidatorWorker:
                 benchmark_capacity=capacity,
                 confirmation_progress=self._confirmation_progress_snapshot(),
                 updater_status=updater_status,
+                weights_fold=self._last_weights_fold,
                 timestamp=timestamp,
             )
             request = ValidatorHeartbeatRequest(
@@ -1449,6 +1473,7 @@ class ValidatorWorker:
                 benchmark_capacity=capacity,
                 confirmation_progress=self._confirmation_progress_snapshot(),
                 updater_status=updater_status,
+                weights_fold=self._last_weights_fold,
                 timestamp=timestamp,
                 signature=signature,
             )
@@ -1948,6 +1973,7 @@ class ValidatorWorker:
                 dethrone_z=self._config.koth_dethrone_z,
                 tie_pooling=ledger.tie_weighting_mode == "pool",
                 ceiling_band_clamp=_ledger_ceiling_band_clamp(ledger),
+                incumbent_agent_id=_ledger_crown_incumbent(ledger),
             ),
             router_entries=tuple(router_ledger.entries),
             router_rank_shares=self._config.router_rank_shares,
@@ -2002,6 +2028,7 @@ class ValidatorWorker:
             margin=self._config.koth_margin,
             dethrone_z=self._config.koth_dethrone_z,
             ceiling_band_clamp=_ledger_ceiling_band_clamp(ledger),
+            incumbent_agent_id=_ledger_crown_incumbent(ledger),
         )
         king_fingerprint = self._king_fingerprint(champion)
         if not miner_weights:
@@ -2019,11 +2046,25 @@ class ValidatorWorker:
             )
         await self._log_commit_reveal_mode()
         submitted = await self._put_weights_with_retry(weights)
+        # The proof of what was folded: the pin identity the ledger carried, the
+        # digest of the exact vector handed to Pylon, and the crown derived.
+        # Echoed on every heartbeat until the next accepted fold replaces it, so
+        # the Platform can show which snapshot each validator's vector came from.
+        fold = WeightsFold(
+            epoch_index=getattr(ledger, "epoch_index", None),
+            ledger_digest=getattr(ledger, "ledger_digest", None),
+            vector_digest=weights_vector_digest(weights),
+            champion_agent_id=champion.agent_id if champion is not None else None,
+            folded_at=int(time.time()),
+        )
+        if submitted:
+            self._last_weights_fold = fold
         return _WeightOutcome(
             leaderboard=leaderboard,
             weights=weights,
             submitted=submitted,
             king_fingerprint=king_fingerprint,
+            fold=fold,
         )
 
     @staticmethod
@@ -2111,6 +2152,7 @@ class ValidatorWorker:
             margin=self._config.koth_margin,
             dethrone_z=self._config.koth_dethrone_z,
             ceiling_band_clamp=_ledger_ceiling_band_clamp(ledger),
+            incumbent_agent_id=_ledger_crown_incumbent(ledger),
         )
         return True, self._king_fingerprint(champion)
 
@@ -2837,6 +2879,7 @@ class ValidatorWorker:
             tail_size=self._config.koth_tail_size,
             dethrone_z=self._config.koth_dethrone_z,
             ceiling_band_clamp=_ledger_ceiling_band_clamp(ledger),
+            incumbent_agent_id=_ledger_crown_incumbent(ledger),
         )
         if not stale:
             return ledger
@@ -2927,6 +2970,7 @@ class ValidatorWorker:
             margin=self._config.koth_margin,
             dethrone_z=self._config.koth_dethrone_z,
             ceiling_band_clamp=_ledger_ceiling_band_clamp(ledger),
+            incumbent_agent_id=_ledger_crown_incumbent(ledger),
         )
         if not contested:
             return
@@ -4089,6 +4133,7 @@ class ValidatorWorker:
                     leaderboard=outcome.leaderboard,
                     weights=outcome.weights,
                     weights_submitted=outcome.submitted,
+                    weights_fold=outcome.fold,
                     weights_due=True,
                     burn_hotkey=self._config.burn_hotkey,
                     onchain_last_update_block=last_update,

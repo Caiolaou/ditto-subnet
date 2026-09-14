@@ -105,16 +105,23 @@ from ditto.api_models import (
     PublicLeaderboardFamily,
     PublicLeaderboardFamilyMember,
     PublicLeaderboardResponse,
+    PublicLedgerActor,
+    PublicLedgerEpoch,
+    PublicLedgerEpochRecipient,
+    PublicLedgerEpochsResponse,
+    PublicLedgerPin,
     PublicMarketQuote,
     PublicMetricDoc,
     PublicModelUse,
     PublicNameHandle,
+    PublicNextPinProjection,
     PublicNeuron,
     PublicAxonInfo,
     PublicChainTotals,
     PublicRegistrationInfo,
     PublicOperationsResponse,
     PublicOrphanedSlot,
+    PublicPinAgreement,
     PublicProvisionalScore,
     PublicRolloutQueueEntry,
     PublicRunModels,
@@ -150,6 +157,7 @@ from ditto.api_models import (
     PublicValidatorScore,
     PublicValidatorSlotPolicy,
     PublicValidatorWeightVector,
+    PublicWeightsFold,
     public_validation_failure_code,
 )
 from ditto.api_models import bench_glossary as bench_glossary_data
@@ -158,6 +166,12 @@ from ditto.api_models.benchmark_capacity import BenchmarkCapacity
 from ditto.api_models.benchmark_progress import BenchmarkProgressStage
 from ditto.api_models.confirmation_bundles import supports_confirmation
 from ditto.api_models.confirmation_progress import ConfirmationProgress
+from ditto.api_models.continual_retest_settings import (
+    CROWN_INCUMBENT_PROTOCOL as _CROWN_INCUMBENT_PROTOCOL,
+)
+from ditto.api_models.continual_retest_settings import (
+    ContinualRetestSettings,
+)
 from ditto.api_models.model_use import ModelUseVerdict
 from ditto.api_models.public import (
     BenchServiceability,
@@ -179,6 +193,7 @@ from ditto.api_models.system_health import (
 )
 from ditto.api_models.ticket_status import TicketPurpose, TicketStatus
 from ditto.api_models.validator import (
+    LedgerEntry,
     V9BaseEvidence,
     V9ConfirmationReceipt,
     ValidatorRuntimeState,
@@ -194,6 +209,7 @@ from ditto.api_server.bench import CURRENT_BENCH_VERSION, is_bench_version_retir
 from ditto.api_server.benchmark_rollout import rolling_qualification_blockers
 from ditto.api_server.continual_retest_settings import (
     aggregate_is_active,
+    crown_incumbent_is_active,
     tie_weighting_is_active,
 )
 from ditto.api_server.datapipeline import DataPipelineError
@@ -228,7 +244,12 @@ from ditto.api_server.koth import (
     bounded_efficiency_adjusted_quality,
     champion_defense,
     emission_allocation,
+    koth_entries_from_ledger,
     project_koth,
+)
+from ditto.api_server.ledger_pin import (
+    classify_vector_against_pins,
+    pin_expected_shares,
 )
 from ditto.api_server.miner_avatar import public_avatar_path
 from ditto.api_server.model_use import model_use_factor, model_use_policy
@@ -250,6 +271,7 @@ from ditto.db.models import (
     ConfirmationScore,
     EvaluationPayment,
     InferenceGrant,
+    LedgerEpochSnapshot,
     Score,
     ScreenerCapacitySnapshot,
     ScreenerNode,
@@ -316,6 +338,7 @@ from ditto.db.queries.heartbeats import (
 )
 from ditto.db.queries.inference import USAGE_ACCOUNTING_VERSION
 from ditto.db.queries.king_reign import KingReveal, get_king_reveal
+from ditto.db.queries.ledger_epochs import latest_pin, list_pins
 from ditto.db.queries.miner_avatars import get_miner_avatar, list_miner_avatars
 from ditto.db.queries.orphaned_leases import OrphanedLease, list_orphaned_leases
 from ditto.db.queries.queue_order import (
@@ -673,6 +696,86 @@ def _public_epoch(snapshot: ChainWeightsSnapshot) -> PublicChainEpoch | None:
     )
 
 
+def _public_weights_fold(row: ValidatorHeartbeat) -> PublicWeightsFold | None:
+    """The closed fold report off one heartbeat row, or ``None`` if absent/invalid."""
+    if row.protocol_version < 27 or not isinstance(row.weights_fold, dict):
+        return None
+    try:
+        return PublicWeightsFold.model_validate(row.weights_fold)
+    except ValidationError:
+        return None
+
+
+async def _pin_decorations(
+    request: Request,
+) -> tuple[list[LedgerEpochSnapshot], dict[str, PublicWeightsFold]]:
+    """The two newest pins and every validator's reported fold, fail-soft.
+
+    Decoration on the matrix: a database problem here degrades the agreement
+    column to ``unknown`` and the fold to null rather than taking the matrix
+    down with it.
+    """
+    session_maker = getattr(request.app.state, "session_maker", None)
+    config = getattr(request.app.state, "config", None)
+    if session_maker is None or config is None:
+        return [], {}
+    try:
+        async with session_maker() as session:
+            pins = list(await list_pins(session, netuid=config.chain.netuid, limit=2))
+            rows = (await session.scalars(select(ValidatorHeartbeat))).all()
+    except SQLAlchemyError:
+        logger.warning("pin agreement decoration unavailable", exc_info=True)
+        return [], {}
+    folds = {}
+    for row in rows:
+        fold = _public_weights_fold(row)
+        if fold is not None:
+            folds[row.validator_hotkey] = fold
+    return pins, folds
+
+
+def _decorate_vectors_with_pins(
+    vectors: list[PublicValidatorWeightVector],
+    *,
+    pins: list[LedgerEpochSnapshot],
+    folds: dict[str, PublicWeightsFold],
+    burn_hotkey: str | None,
+) -> tuple[list[PublicValidatorWeightVector], PublicPinAgreement | None]:
+    current = pins[0] if pins else None
+    previous = pins[1] if len(pins) > 1 else None
+    expected_current = pin_expected_shares(current) if current is not None else None
+    expected_previous = pin_expected_shares(previous) if previous is not None else None
+    decorated: list[PublicValidatorWeightVector] = []
+    matching = 0
+    for vector in vectors:
+        verdict = classify_vector_against_pins(
+            {weight.hotkey: weight.value for weight in vector.weights},
+            expected_current=expected_current,
+            expected_previous=expected_previous,
+            burn_hotkey=burn_hotkey,
+        )
+        matching += verdict == "current"
+        decorated.append(
+            vector.model_copy(
+                update={
+                    "fold": folds.get(vector.validator_hotkey),
+                    "matches_pin": verdict,
+                }
+            )
+        )
+    agreement = (
+        PublicPinAgreement(
+            epoch_index=current.epoch_index,
+            previous_epoch_index=previous.epoch_index if previous else None,
+            matching=matching,
+            total=len(decorated),
+        )
+        if current is not None
+        else None
+    )
+    return decorated, agreement
+
+
 async def _refresh_chain_weights(request: Request) -> _ChainWeightsSnapshot | None:
     """Read the matrix from chain and cache it, or return ``None`` on failure.
 
@@ -696,6 +799,25 @@ async def _refresh_chain_weights(request: Request) -> _ChainWeightsSnapshot | No
             _error_detail(error),
         )
         return None
+    pins, folds = await _pin_decorations(request)
+    vectors, agreement = _decorate_vectors_with_pins(
+        [
+            PublicValidatorWeightVector(
+                validator_uid=vector.validator_uid,
+                validator_hotkey=vector.validator_hotkey,
+                weights=[
+                    PublicChainWeight(
+                        uid=weight.uid, hotkey=weight.hotkey, value=weight.value
+                    )
+                    for weight in vector.weights
+                ],
+            )
+            for vector in snapshot.vectors
+        ],
+        pins=pins,
+        folds=folds,
+        burn_hotkey=snapshot.owner_hotkey,
+    )
     refreshed = _ChainWeightsSnapshot(
         payload=PublicChainWeightsResponse(
             generated_at=datetime.now(UTC),
@@ -704,19 +826,8 @@ async def _refresh_chain_weights(request: Request) -> _ChainWeightsSnapshot | No
             block=snapshot.block,
             block_hash=snapshot.block_hash,
             owner_hotkey=snapshot.owner_hotkey,
-            vectors=[
-                PublicValidatorWeightVector(
-                    validator_uid=vector.validator_uid,
-                    validator_hotkey=vector.validator_hotkey,
-                    weights=[
-                        PublicChainWeight(
-                            uid=weight.uid, hotkey=weight.hotkey, value=weight.value
-                        )
-                        for weight in vector.weights
-                    ],
-                )
-                for vector in snapshot.vectors
-            ],
+            vectors=vectors,
+            pin_agreement=agreement,
         ),
         read_at=time.monotonic(),
     )
@@ -2695,8 +2806,16 @@ def _public_koth_emissions(
     efficiency_curve_versions: dict[UUID, int] | None = None,
     tie_weighting_active: bool = False,
     ceiling_band_clamp: bool = False,
+    ledger_pin: PublicLedgerPin | None = None,
+    crown_incumbent_active: bool = False,
 ) -> PublicKothEmissions | None:
-    """Project the caller's finalized, registration-eligible score pool."""
+    """Project the caller's finalized, registration-eligible score pool.
+
+    With incumbency active the live fold opens from the current pin's champion,
+    exactly as the next pin will, so ``champion_agent_id`` is also the crown the
+    fleet will fold at the next boundary and ``next_pin_projection`` says
+    whether that moves the 65% slot.
+    """
     quorum_values = quorum_by_agent or {}
     bonus_values = efficiency_bonuses or {}
     factor_values = efficiency_factors or {}
@@ -2776,10 +2895,16 @@ def _public_koth_emissions(
             )
         )
 
+    incumbent_id = (
+        ledger_pin.champion_agent_id
+        if crown_incumbent_active and ledger_pin is not None
+        else None
+    )
     projection = project_koth(
         fold_entries,
         distinct_hotkeys=tie_weighting_active,
         ceiling_band_clamp=ceiling_band_clamp,
+        incumbent_agent_id=incumbent_id,
     )
     if projection is None:
         return None
@@ -2871,6 +2996,44 @@ def _public_koth_emissions(
             else None
         ),
         recipients=recipients,
+        ledger_pin=ledger_pin,
+        crown_incumbent_active=crown_incumbent_active,
+        crown_incumbent_required_protocol=_CROWN_INCUMBENT_PROTOCOL,
+        crown_incumbent_agent_id=(
+            incumbent_id
+            if any(entry.agent_id == incumbent_id for entry in fold_entries)
+            else None
+        ),
+        next_pin_projection=(
+            PublicNextPinProjection(
+                champion_agent_id=projection.champion.agent_id,
+                champion_miner_hotkey=projection.champion.miner_hotkey,
+                incumbent_agent_id=ledger_pin.champion_agent_id,
+                changes_crown=(
+                    projection.champion.agent_id != ledger_pin.champion_agent_id
+                ),
+                decision=(
+                    PublicDethroneDecision(
+                        challenger_lead=defense.challenger_lead,
+                        required_lead=defense.required_lead,
+                        margin_lead=defense.margin_lead,
+                        statistical_lead=defense.statistical_lead,
+                        method=defense.method,
+                        dethrones=defense.dethrones,
+                        required_score=defense.required_score,
+                        score_ceiling=defense.score_ceiling,
+                        ceiling_deadlocked=defense.ceiling_deadlocked,
+                        paired_standard_error=defense.paired_standard_error,
+                        shared_seed_count=defense.shared_seed_count,
+                        seed_differences=defense.seed_differences,
+                    )
+                    if defense is not None
+                    else None
+                ),
+            )
+            if ledger_pin is not None
+            else None
+        ),
     )
 
 
@@ -3213,6 +3376,16 @@ async def build_public_leaderboard(
             now=now,
             freshness=_VALIDATOR_STALE_WINDOW,
         )
+    )
+    crown_incumbent_fleet_ready = await live_validator_fleet_supports_protocol(
+        session,
+        minimum_protocol=_CROWN_INCUMBENT_PROTOCOL,
+        bench_version=active_version,
+        now=now,
+        freshness=_VALIDATOR_STALE_WINDOW,
+    )
+    crown_incumbent_active = bench_version is None and crown_incumbent_is_active(
+        continual_settings, fleet_protocol_ready=crown_incumbent_fleet_ready
     )
     efficiency_view: EfficiencyBoardView | None = None
     if finalized_rows:
@@ -3805,9 +3978,224 @@ async def build_public_leaderboard(
                 efficiency_curve_versions=board_curve_versions,
                 tie_weighting_active=tie_weighting_active,
                 ceiling_band_clamp=ceiling_band_clamp_active,
+                ledger_pin=await _current_ledger_pin(
+                    request, session, continual_settings
+                ),
+                crown_incumbent_active=crown_incumbent_active,
             )
         ),
         efficiency=_efficiency_status(efficiency_view),
+    )
+
+
+def _ledger_pin_model(
+    row: LedgerEpochSnapshot, *, mode: Literal["epoch", "live"]
+) -> PublicLedgerPin:
+    served = (
+        (row.context or {}).get("served", {}) if isinstance(row.context, dict) else {}
+    )
+    schedule = (
+        (row.context or {}).get("schedule", {}) if isinstance(row.context, dict) else {}
+    )
+    next_epoch = (
+        schedule.get("next_epoch_block") if isinstance(schedule, dict) else None
+    )
+    return PublicLedgerPin(
+        mode=mode,
+        epoch_index=row.epoch_index,
+        last_epoch_block=row.last_epoch_block,
+        pinned_block=row.pinned_block,
+        pinned_at=row.pinned_at,
+        next_epoch_block=next_epoch if isinstance(next_epoch, int) else None,
+        bench_version=row.bench_version,
+        entry_count=len(row.entries or []),
+        ledger_digest=row.ledger_digest,
+        champion_agent_id=row.champion_agent_id,
+        incumbent_agent_id=row.incumbent_agent_id,
+        crown_mode=served.get("crown_mode") if isinstance(served, dict) else None,
+    )
+
+
+async def _current_ledger_pin(
+    request: Request, session: AsyncSession, settings: ContinualRetestSettings
+) -> PublicLedgerPin | None:
+    """The pin validators fold now; ``None`` in live mode or before the first pin."""
+    if settings.ledger_pin_mode != "epoch":
+        return None
+    try:
+        row = await latest_pin(session, netuid=request.app.state.config.chain.netuid)
+    except SQLAlchemyError:
+        logger.warning(
+            "ledger pin read failed; board renders without it", exc_info=True
+        )
+        return None
+    return None if row is None else _ledger_pin_model(row, mode="epoch")
+
+
+async def _ledger_actor_names(
+    session: AsyncSession, agent_ids: set[UUID]
+) -> dict[UUID, tuple[str | None, int | None]]:
+    if not agent_ids:
+        return {}
+    from ditto.api_server.name_claim import expected_netuid as _name_claim_netuid
+    from ditto.db.queries.name_claims import active_handle_claims
+
+    rows = (
+        (
+            await session.execute(
+                select(Agent.agent_id, Agent.name, Agent.version).where(
+                    Agent.agent_id.in_(list(agent_ids))
+                )
+            )
+        )
+        .tuples()
+        .all()
+    )
+    claims = await active_handle_claims(session, netuid=_name_claim_netuid())
+    return {
+        agent_id: (_public_named(name, None, claims)[0], version)
+        for agent_id, name, version in rows
+    }
+
+
+@router.get("/ledger-epochs", response_model=PublicLedgerEpochsResponse)
+async def ledger_epochs(
+    request: Request,
+    response: Response,
+    session: SessionDep,
+    limit: Annotated[int, Query(ge=1, le=100)] = 24,
+) -> PublicLedgerEpochsResponse:
+    """Per-epoch history of the pinned ledger and the crown it produced.
+
+    Newest first. Each row is one immutable pin: the fold input every validator
+    received for that chain epoch, the champion the fold derived from it under
+    its frozen markers, the incumbent it was handed, and the recipient shares.
+    ``crown_changed`` compares consecutive pins, so a quiet column across
+    retest waves is the stability the pin exists to produce. Live mode still
+    lists historical pins but reports ``mode: live``.
+    """
+    response.headers["Cache-Control"] = _CACHE_CONTROL
+    settings = await request.app.state.continual_retest_settings.resolve(
+        getattr(request.app.state, "session_maker", None)
+    )
+    mode: Literal["epoch", "live"] = (
+        "epoch" if settings.ledger_pin_mode == "epoch" else "live"
+    )
+    netuid = request.app.state.config.chain.netuid
+    # One extra row so the oldest returned pin can still report crown_changed.
+    rows = list(await list_pins(session, netuid=netuid, limit=limit + 1))
+    shown = rows[:limit]
+    actor_ids: set[UUID] = set()
+    projections: list[tuple[LedgerEpochSnapshot, Any, Any]] = []
+    for row in shown:
+        entries = [LedgerEntry.model_validate(item) for item in (row.entries or [])]
+        served = (
+            (row.context or {}).get("served", {})
+            if isinstance(row.context, dict)
+            else {}
+        )
+        fold_entries = koth_entries_from_ledger(entries)
+        projection = project_koth(
+            fold_entries,
+            distinct_hotkeys=served.get("tie_weighting_mode") == "pool",
+            ceiling_band_clamp=served.get("dethrone_band_mode") == "headroom_capped",
+            incumbent_agent_id=(
+                row.incumbent_agent_id
+                if served.get("crown_mode") == "incumbent"
+                else None
+            ),
+        )
+        allocation = (
+            emission_allocation(
+                fold_entries,
+                projection,
+                tie_pooling=served.get("tie_weighting_mode") == "pool",
+                ceiling_band_clamp=served.get("dethrone_band_mode")
+                == "headroom_capped",
+            )
+            if projection is not None
+            else None
+        )
+        projections.append((row, projection, allocation))
+        for candidate in (row.champion_agent_id, row.incumbent_agent_id):
+            if candidate is not None:
+                actor_ids.add(candidate)
+        if allocation is not None:
+            actor_ids.update(member.agent_id for member in allocation.members)
+    names = await _ledger_actor_names(session, actor_ids)
+    hotkeys: dict[UUID, str] = {}
+    for row in shown:
+        for item in row.entries or []:
+            try:
+                hotkeys[UUID(str(item["agent_id"]))] = str(item["miner_hotkey"])
+            except (KeyError, ValueError, TypeError):
+                continue
+
+    def actor(agent_id: UUID | None) -> PublicLedgerActor | None:
+        if agent_id is None or agent_id not in hotkeys:
+            return None
+        name, version = names.get(agent_id, (None, None))
+        return PublicLedgerActor(
+            agent_id=agent_id,
+            miner_hotkey=hotkeys[agent_id],
+            agent_name=name,
+            agent_version=version,
+        )
+
+    epochs: list[PublicLedgerEpoch] = []
+    for index, (row, _projection, allocation) in enumerate(projections):
+        previous = rows[index + 1] if index + 1 < len(rows) else None
+        recipients: list[PublicLedgerEpochRecipient] = []
+        if allocation is not None:
+            total = sum(allocation.shares) or 1.0
+            for position, member in enumerate(allocation.members):
+                base = actor(member.agent_id)
+                if base is None:
+                    continue
+                recipients.append(
+                    PublicLedgerEpochRecipient(
+                        **base.model_dump(),
+                        role=(
+                            "joint_champion"
+                            if allocation.mode == "score_ceiling_pool"
+                            else "champion"
+                            if position == 0
+                            else "tail"
+                        ),
+                        share_of_miner_pool=allocation.shares[position] / total,
+                    )
+                )
+        served = (
+            (row.context or {}).get("served", {})
+            if isinstance(row.context, dict)
+            else {}
+        )
+        epochs.append(
+            PublicLedgerEpoch(
+                epoch_index=row.epoch_index,
+                last_epoch_block=row.last_epoch_block,
+                pinned_block=row.pinned_block,
+                pinned_at=row.pinned_at,
+                bench_version=row.bench_version,
+                entry_count=len(row.entries or []),
+                ledger_digest=row.ledger_digest,
+                crown_mode=served.get("crown_mode")
+                if isinstance(served, dict)
+                else None,
+                champion=actor(row.champion_agent_id),
+                incumbent=actor(row.incumbent_agent_id),
+                crown_changed=(
+                    previous is not None
+                    and previous.champion_agent_id != row.champion_agent_id
+                ),
+                recipients=recipients,
+            )
+        )
+    return PublicLedgerEpochsResponse(
+        generated_at=datetime.now(UTC),
+        mode=mode,
+        count=len(epochs),
+        epochs=epochs,
     )
 
 
@@ -4265,6 +4653,7 @@ def _validator_heartbeats_response(
                 updater_status = ValidatorUpdaterStatus.model_validate(
                     row.updater_status
                 )
+        weights_fold = _public_weights_fold(row)
         assignment_state: ValidatorAssignmentState
         if assignment is None:
             # No live lease. Reporting an agent with no assignment is a genuine
@@ -4449,6 +4838,7 @@ def _validator_heartbeats_response(
                 stack=stack,
                 stack_health=stack_health,
                 updater_status=updater_status,
+                weights_fold=weights_fold,
             )
         )
     return PublicValidatorHeartbeatsResponse(

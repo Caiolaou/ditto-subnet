@@ -115,6 +115,10 @@ from ditto.api_models.validator_updater import (
     ValidatorUpdaterStatus,
     validator_updater_status_signing_token,
 )
+from ditto.api_models.validator_weights_fold import (
+    WeightsFold,
+    weights_fold_signing_token,
+)
 from ditto.api_server.anti_copy_comparison import ANTI_COPY_ALGORITHM_VERSION
 from ditto.api_server.artifact_audit import client_ip, request_detail
 from ditto.api_server.attestation import expected_netuid
@@ -1760,11 +1764,14 @@ _JOB_REQUEST_MAX_AGE = timedelta(minutes=2)
 # A leased seed of ``None`` is meaningful (a legacy bundle lease), so "this
 # validator holds no lease" needs a sentinel distinct from it.
 _MISSING_LEASE: Any = object()
-# Throttle + timeout for the post-commit on-chain weight-confirmation sweep that
-# arms a king's public source-release window. Bounds how often the score path
-# reads the revealed weight matrix while any king still awaits confirmation.
+# Throttle for the post-commit on-chain weight-confirmation sweep that arms a
+# king's public source-release window. The score path prefers the already-warm
+# public weights cache; a chain read is a fallback.
 _KING_WEIGHT_CHECK_INTERVAL = timedelta(minutes=5)
-_KING_WEIGHT_CHECK_TIMEOUT_SECONDS = 5.0
+# Same budget as the public weights panel. `get_weights` opens a fresh
+# substrate websocket and exhausts two storage maps; that measured 10-21s in
+# prod, so a 5s cap cancelled every attempt and left kings unstamped for days.
+_KING_WEIGHT_CHECK_TIMEOUT_SECONDS = 30.0
 _QUALIFICATION_REFRESH_INTERVAL_SECONDS = 30.0
 _qualification_refresh_due = 0.0
 
@@ -2225,8 +2232,11 @@ def _heartbeat_signing_message(
     benchmark_capacity: BenchmarkCapacity | None = None,
     confirmation_progress: list[ConfirmationProgress] | None = None,
     updater_status: ValidatorUpdaterStatus | None = None,
+    weights_fold: WeightsFold | None = None,
 ) -> bytes:
     """Canonical heartbeat payload, mirrored by ``ditto-subnet``."""
+    if weights_fold is not None and protocol_version < 27:
+        raise ValueError("weights fold requires heartbeat protocol v27")
     if stack_health is not None and protocol_version < 9:
         raise ValueError("per-component stack health requires heartbeat protocol v9")
     if benchmark_capacity is not None and protocol_version < 10:
@@ -2248,6 +2258,23 @@ def _heartbeat_signing_message(
             if updater_status is None:
                 raise ValueError("heartbeat protocol v23 requires updater status")
             active = str(active_agent_id) if active_agent_id is not None else ""
+            # Mirrors the validator: the fold report changes the signed bytes
+            # only when present, so a fold-less v27 heartbeat stays on v23.
+            if weights_fold is not None:
+                return (
+                    "ditto-validator-heartbeat:v27:"
+                    f"{validator_hotkey}:{software_version}:{protocol_version}:"
+                    f"{code_digest}:{state}:{active}:"
+                    f"{system_metrics_signing_token(system_metrics)}:"
+                    f"{benchmark_progress_signing_token(benchmark_progress)}:"
+                    f"{validator_identity_signing_token(capabilities, stack)}:"
+                    f"{validator_stack_health_signing_token(stack_health)}:"
+                    f"{benchmark_capacity_signing_token(benchmark_capacity)}:"
+                    f"{confirmation_progress_signing_token(confirmation_progress)}:"
+                    f"{validator_updater_status_signing_token(updater_status)}:"
+                    f"{weights_fold_signing_token(weights_fold)}:"
+                    f"{timestamp}"
+                ).encode()
             return (
                 "ditto-validator-heartbeat:v23:"
                 f"{validator_hotkey}:{software_version}:{protocol_version}:"
@@ -2819,6 +2846,7 @@ async def heartbeat(
         benchmark_capacity=request_body.benchmark_capacity,
         confirmation_progress=request_body.confirmation_progress,
         updater_status=request_body.updater_status,
+        weights_fold=request_body.weights_fold,
     )
     if not _verify_signature(validator_hotkey, payload, request_body.signature):
         raise ValidatorAuthError("heartbeat signature verification failed")
@@ -2902,6 +2930,11 @@ async def heartbeat(
             updater_status=(
                 request_body.updater_status.model_dump(mode="json", exclude_none=True)
                 if request_body.updater_status is not None
+                else None
+            ),
+            weights_fold=(
+                request_body.weights_fold.model_dump(mode="json", exclude_none=True)
+                if request_body.weights_fold is not None
                 else None
             ),
             benchmark_capacity=(
@@ -4069,6 +4102,79 @@ async def _current_retest_cohort(
     return emission_members, wave_members, combined_cohort
 
 
+def _revealed_weighted_hotkeys(app_state: Any) -> set[str] | None:
+    """Hotkeys with a positive revealed weight, from the public panel's cache.
+
+    The dashboard already refreshes ``app_state.public_chain_weights`` off the
+    request path with a 30s budget. Reusing it avoids opening a second substrate
+    websocket on every score. ``None`` means the cache is cold, not that nobody
+    has weight.
+    """
+    cached = getattr(app_state, "public_chain_weights", None)
+    payload = getattr(cached, "payload", None)
+    vectors = getattr(payload, "vectors", None)
+    if vectors is None:
+        return None
+    hotkeys: set[str] = set()
+    for vector in vectors:
+        for weight in getattr(vector, "weights", ()):
+            hotkey = getattr(weight, "hotkey", None)
+            value = getattr(weight, "value", None)
+            if isinstance(hotkey, str) and isinstance(value, (int, float)) and value:
+                hotkeys.add(hotkey)
+    return hotkeys
+
+
+async def _stamp_confirmed_kings(
+    session: AsyncSession,
+    pending: list[tuple[UUID, str]],
+    weighted_hotkeys: set[str],
+    now: datetime,
+) -> None:
+    confirmed = [agent_id for agent_id, hotkey in pending if hotkey in weighted_hotkeys]
+    if not confirmed:
+        return
+    async with session.begin():
+        for agent_id in confirmed:
+            await record_weight_confirmed(session, agent_id=agent_id, now=now)
+
+
+def _schedule_king_weight_refresh(
+    app_state: Any,
+    chain: ChainClient,
+    pending: list[tuple[UUID, str]],
+    now: datetime,
+) -> None:
+    """Read the matrix off the score path when the public cache is cold."""
+    existing = getattr(app_state, "king_weight_refresh_task", None)
+    if isinstance(existing, asyncio.Task) and not existing.done():
+        return
+    session_maker = getattr(app_state, "session_maker", None)
+    if session_maker is None:
+        return
+
+    async def _refresh() -> None:
+        try:
+            snapshot = await asyncio.wait_for(
+                chain.get_weights(app_state.config.chain.netuid),
+                timeout=_KING_WEIGHT_CHECK_TIMEOUT_SECONDS,
+            )
+            weighted = {
+                weight.hotkey
+                for vector in snapshot.vectors
+                for weight in vector.weights
+            }
+            async with session_maker() as session:
+                await _stamp_confirmed_kings(session, pending, weighted, now)
+        except Exception:
+            logger.warning(
+                "king weight-confirmation background read failed", exc_info=True
+            )
+
+    task = asyncio.create_task(_refresh())
+    app_state.king_weight_refresh_task = task
+
+
 async def _confirm_king_onchain_weights(
     app_state: Any,
     chain: ChainClient,
@@ -4081,33 +4187,35 @@ async def _confirm_king_onchain_weights(
     Reads the REVEALED weight matrix (post commit-reveal) and stamps
     ``weight_confirmed_at`` for every ever-king miner that now has validator
     weight set on it. Erring toward weights, not realized emission magnitude, so
-    a genuine king is never trapped private. Throttled via ``app_state`` so the
-    score path reads the chain at most once per interval while a king is pending;
-    once no king is unconfirmed, it does zero chain work. The caller wraps this
-    best-effort so a chain hiccup never fails an already-committed score.
+    a genuine king is never trapped private. Prefers the public weights cache so
+    the score path does not wait on a 10-21s substrate read; a cold cache
+    refreshes in the background. Throttled via ``app_state`` so a pending king
+    does not spawn a chain read per score. The caller wraps this best-effort so
+    a chain hiccup never fails an already-committed score.
     """
     last_checked = getattr(app_state, "king_weight_checked_at", None)
     if last_checked is not None and (now - last_checked) < _KING_WEIGHT_CHECK_INTERVAL:
         return
     app_state.king_weight_checked_at = now
     pending = await list_unconfirmed_kings(session)
-    # Release the read transaction so the (potentially multi-second) chain call
-    # never holds a DB transaction open, and so the write below can open its own.
+    # Release the read transaction so a chain fallback never holds a DB
+    # transaction open, and so the write below can open its own.
     await session.rollback()
     if not pending:
         return
-    netuid = app_state.config.chain.netuid
-    snapshot = await asyncio.wait_for(
-        chain.get_weights(netuid), timeout=_KING_WEIGHT_CHECK_TIMEOUT_SECONDS
-    )
-    weighted_hotkeys = {
-        weight.hotkey for vector in snapshot.vectors for weight in vector.weights
-    }
-    confirmed = [agent_id for agent_id, hotkey in pending if hotkey in weighted_hotkeys]
-    if confirmed:
-        async with session.begin():
-            for agent_id in confirmed:
-                await record_weight_confirmed(session, agent_id=agent_id, now=now)
+    weighted_hotkeys = _revealed_weighted_hotkeys(app_state)
+    if weighted_hotkeys is None:
+        if getattr(app_state, "session_maker", None) is not None:
+            _schedule_king_weight_refresh(app_state, chain, pending, now)
+            return
+        snapshot = await asyncio.wait_for(
+            chain.get_weights(app_state.config.chain.netuid),
+            timeout=_KING_WEIGHT_CHECK_TIMEOUT_SECONDS,
+        )
+        weighted_hotkeys = {
+            weight.hotkey for vector in snapshot.vectors for weight in vector.weights
+        }
+    await _stamp_confirmed_kings(session, pending, weighted_hotkeys, now)
 
 
 async def _champion_anchored_seed_set(

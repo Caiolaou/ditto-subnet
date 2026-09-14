@@ -2,6 +2,134 @@
 
 <!-- version list -->
 
+## v0.267.3 (2026-09-14)
+
+### Bug Fixes
+
+- **screener**: Bound shadow invariant summaries for policy 13
+  ([#1910](https://github.com/ditto-assistant/ditto-subnet/pull/1910),
+  [`f5512ac`](https://github.com/ditto-assistant/ditto-subnet/commit/f5512ac417e3cbcdc0f09e078cb9058ad29cd11d))
+
+
+## v0.267.2 (2026-09-14)
+
+### Bug Fixes
+
+- **screener**: Recover malformed shadow adjudication arguments
+  ([#1907](https://github.com/ditto-assistant/ditto-subnet/pull/1907),
+  [`5f84f37`](https://github.com/ditto-assistant/ditto-subnet/commit/5f84f37742c1bf29e89ea4e2a8172625eb74db9c))
+
+
+## v0.267.1 (2026-09-14)
+
+### Bug Fixes
+
+- **screener**: Honor bounded shadow request deadlines
+  ([#1906](https://github.com/ditto-assistant/ditto-subnet/pull/1906),
+  [`62d4b60`](https://github.com/ditto-assistant/ditto-subnet/commit/62d4b60635b08b895c5631eab5e39681444a663c))
+
+- **screener**: Require final adjudication for every shadow review
+  ([#1903](https://github.com/ditto-assistant/ditto-subnet/pull/1903),
+  [`2dc361b`](https://github.com/ditto-assistant/ditto-subnet/commit/2dc361b8a57deffb4deb4d02bd60cb10e1569f51))
+
+- **screener**: Restore four persistent workers
+  ([#1890](https://github.com/ditto-assistant/ditto-subnet/pull/1890),
+  [`17e4d1e`](https://github.com/ditto-assistant/ditto-subnet/commit/17e4d1ea69c878e8a639e1842addef88e929469c))
+
+### Documentation
+
+- Correct the miner evaluation fee to the live 0.1 TAO
+  ([#1894](https://github.com/ditto-assistant/ditto-subnet/pull/1894),
+  [`cbb43fd`](https://github.com/ditto-assistant/ditto-subnet/commit/cbb43fdd672384e2777a6e732ed33f4969ef2f09))
+
+
+## v0.267.0 (2026-09-14)
+
+### Features
+
+- **platform**: Publish screening policy v13 as activation-ready
+  ([#1891](https://github.com/ditto-assistant/ditto-subnet/pull/1891),
+  [`6377491`](https://github.com/ditto-assistant/ditto-subnet/commit/6377491812e792f7d02c64eae5f5eef972793ef6))
+
+
+## v0.266.1 (2026-09-14)
+
+### Bug Fixes
+
+- **screener**: Unblock bounded fanout shadow rollout
+  ([#1900](https://github.com/ditto-assistant/ditto-subnet/pull/1900),
+  [`b8f8846`](https://github.com/ditto-assistant/ditto-subnet/commit/b8f8846c5979fe8f2f696efc853908a7a469d9ae))
+
+
+## v0.266.0 (2026-09-14)
+
+### Features
+
+- **screener**: Add bounded two-stage fanout shadow pilot
+  ([#1893](https://github.com/ditto-assistant/ditto-subnet/pull/1893),
+  [`aaea7e8`](https://github.com/ditto-assistant/ditto-subnet/commit/aaea7e8ec1997aae8888875de589916aae99af33))
+
+
+## v0.265.1 (2026-09-14)
+
+### Bug Fixes
+
+- **screener**: Avoid claim lock convoys
+  ([`5748b29`](https://github.com/ditto-assistant/ditto-subnet/commit/5748b290f92449b0f3f79fdb3b8260e54c34f3fc))
+
+
+## v0.265.0 (2026-09-14)
+
+### Features
+
+- **backroom**: Batch ATH rulings tool with preview and guarded execute
+  ([#1875](https://github.com/ditto-assistant/ditto-subnet/pull/1875),
+  [`d237b87`](https://github.com/ditto-assistant/ditto-subnet/commit/d237b87a273cdca78380efb35cc2f3fbd4b366a0))
+
+
+## v0.264.0 (2026-09-14)
+
+### Bug Fixes
+
+- Restore two screeners and avoid rate-limited provider preference
+  ([#1878](https://github.com/ditto-assistant/ditto-subnet/pull/1878),
+  [`4bb7601`](https://github.com/ditto-assistant/ditto-subnet/commit/4bb760199c25730b56efcae44346ed186a35fd1f))
+
+- **platform**: Confirm king weights from the public cache
+  ([#1877](https://github.com/ditto-assistant/ditto-subnet/pull/1877),
+  [`d75c13c`](https://github.com/ditto-assistant/ditto-subnet/commit/d75c13cb5ea47de2e388c5ecda5507c29a815e6b))
+
+- **screener**: Allow bounded reasoning time for final verdict
+  ([#1886](https://github.com/ditto-assistant/ditto-subnet/pull/1886),
+  [`77b09f4`](https://github.com/ditto-assistant/ditto-subnet/commit/77b09f4f4889620b34fd3c9a6dbb848029613d59))
+
+### Chores
+
+- **tests**: Unblock screener release formatting gate
+  ([#1879](https://github.com/ditto-assistant/ditto-subnet/pull/1879),
+  [`0ceee76`](https://github.com/ditto-assistant/ditto-subnet/commit/0ceee76999e08619a8bdc6f8fd233a21d0bd5acf))
+
+### Documentation
+
+- **skills**: Record the 2026-09 LongMem shadow rollout and its reusable boundaries
+  ([#1874](https://github.com/ditto-assistant/ditto-subnet/pull/1874),
+  [`9d3b6f5`](https://github.com/ditto-assistant/ditto-subnet/commit/9d3b6f5ef7ee01da3ec38ee38e552f9fbe7f455d))
+
+### Features
+
+- **platform**: Pin the validator ledger once per chain epoch
+  ([#1766](https://github.com/ditto-assistant/ditto-subnet/pull/1766),
+  [`5c04ffd`](https://github.com/ditto-assistant/ditto-subnet/commit/5c04ffdb9a1fa7fa082d074c7c789fb9b9ae86c4))
+
+- **validator**: Defend the KOTH crown from the served incumbent
+  ([#1767](https://github.com/ditto-assistant/ditto-subnet/pull/1767),
+  [`9c7de98`](https://github.com/ditto-assistant/ditto-subnet/commit/9c7de9882ad4b681d6144c001efedd608e8d898e))
+
+- **validator**: Report the folded epoch pin and match vectors to it
+  ([#1775](https://github.com/ditto-assistant/ditto-subnet/pull/1775),
+  [`6e7c530`](https://github.com/ditto-assistant/ditto-subnet/commit/6e7c530db5264964cb40afe5f0719eec0df74112))
+
+
 ## v0.263.1 (2026-09-14)
 
 ### Bug Fixes

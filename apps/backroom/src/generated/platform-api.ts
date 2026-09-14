@@ -239,6 +239,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/ath-rulings/batch-execute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute Ath Rulings Batch
+         * @description Apply the exact previewed rulings; each item is audited on its own.
+         *
+         *     Refuses an item whose identity guards moved, or whose crown outcome
+         *     (``would_change_crown``, champion, raw leader) differs from the preview.
+         *     Failures never hide successful rows.
+         */
+        post: operations["execute_ath_rulings_batch_api_v1_admin_ath_rulings_batch_execute_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/ath-rulings/batch-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Ath Rulings Batch
+         * @description Dry-run every ruling against live state; this never mutates.
+         */
+        post: operations["preview_ath_rulings_batch_api_v1_admin_ath_rulings_batch_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/ath-rulings/upload-url": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Ath Rulings Upload
+         * @description Issue a five-minute presigned PUT for one rulings document.
+         */
+        post: operations["create_ath_rulings_upload_api_v1_admin_ath_rulings_upload_url_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/benchmark-rollout": {
         parameters: {
             query?: never;
@@ -1455,6 +1519,26 @@ export interface paths {
          * @description Return controller state, enrolled nodes, and recent redacted audit events.
          */
         get: operations["screener_capacity_api_v1_admin_screener_capacity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/screener-fanout-shadow": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Screener Fanout Shadow
+         * @description Return exact baseline/fan-out pairs and bounded fleet-wide metrics.
+         */
+        get: operations["get_screener_fanout_shadow_api_v1_admin_screener_fanout_shadow_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3821,6 +3905,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/public/ledger-epochs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ledger Epochs
+         * @description Per-epoch history of the pinned ledger and the crown it produced.
+         *
+         *     Newest first. Each row is one immutable pin: the fold input every validator
+         *     received for that chain epoch, the champion the fold derived from it under
+         *     its frozen markers, the incumbent it was handed, and the recipient shares.
+         *     ``crown_changed`` compares consecutive pins, so a quiet column across
+         *     retest waves is the stability the pin exists to produce. Live mode still
+         *     lists historical pins but reports ``mode: live``.
+         */
+        get: operations["ledger_epochs_api_v1_public_ledger_epochs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/public/miners/{hotkey}/avatar": {
         parameters: {
             query?: never;
@@ -4776,6 +4887,46 @@ export interface paths {
          * @description Keep trusted Kaniko deletion failures visible after zero-replica suspension.
          */
         post: operations["record_trusted_image_build_cleanup_api_v1_screener_controller_trusted_image_builds__build_id__cleanup_required_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/screener/fanout-shadow-reviews/{shadow_id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Complete Fanout Shadow Review
+         * @description Persist comparison evidence without touching screening authority.
+         */
+        post: operations["complete_fanout_shadow_review_api_v1_screener_fanout_shadow_reviews__shadow_id__complete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/screener/fanout-shadow-reviews/{shadow_id}/source": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Fanout Shadow Source
+         * @description Mint one digest-bound source URL for an admitted shadow-only job.
+         */
+        get: operations["get_fanout_shadow_source_api_v1_screener_fanout_shadow_reviews__shadow_id__source_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -6288,6 +6439,250 @@ export interface components {
             history: components["schemas"]["ArtifactReleaseSettingsRevision"][];
         };
         /**
+         * AdminAthRuling
+         * @description One guarded ruling: the same guards ``open_ath_review`` takes.
+         *
+         *     ``reason`` is public and miner-visible; it is deliberately unbounded above
+         *     so a detailed citation-bearing reason survives every validation surface.
+         */
+        AdminAthRuling: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "open" | "clear" | "reject";
+            /**
+             * Agent Id
+             * Format: uuid
+             */
+            agent_id: string;
+            /** Evidence References */
+            evidence_references?: string[];
+            /** Expected Score Count */
+            expected_score_count: number;
+            /** Expected Sha256 */
+            expected_sha256: string;
+            /** Reason */
+            reason: string;
+        };
+        /** AdminAthRulingExecuteItem */
+        AdminAthRulingExecuteItem: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "open" | "clear" | "reject";
+            /**
+             * Agent Id
+             * Format: uuid
+             */
+            agent_id: string;
+            /** Agent Status */
+            agent_status?: string | null;
+            /**
+             * Annotated
+             * @default false
+             */
+            annotated: boolean;
+            /** Index */
+            index: number;
+            /** Message */
+            message: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "applied" | "already_applied" | "failed";
+            /** Steps Applied */
+            steps_applied?: ("open" | "clear" | "reject")[];
+            /** Would Change Crown */
+            would_change_crown: boolean;
+        };
+        /** AdminAthRulingPreviewItem */
+        AdminAthRulingPreviewItem: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "open" | "clear" | "reject";
+            /**
+             * Agent Id
+             * Format: uuid
+             */
+            agent_id: string;
+            /** Agent Name */
+            agent_name?: string | null;
+            /** Agent Status */
+            agent_status?: string | null;
+            /** Agent Version */
+            agent_version?: number | null;
+            /** Artifact Sha256 */
+            artifact_sha256?: string | null;
+            /** Conflict Reason */
+            conflict_reason?: string | null;
+            /**
+             * Disposition
+             * @enum {string}
+             */
+            disposition: "ready" | "already_applied" | "stale_guard" | "conflict" | "not_found" | "invalid";
+            /** Evidence References */
+            evidence_references?: string[];
+            /** Index */
+            index: number;
+            /** Message */
+            message: string;
+            /** Miner Hotkey */
+            miner_hotkey?: string | null;
+            /** Ok */
+            ok: boolean;
+            /** Reason */
+            reason: string;
+            /** Score Count */
+            score_count?: number | null;
+            /** Stale Guard */
+            stale_guard: boolean;
+            /** Steps */
+            steps?: ("open" | "clear" | "reject")[];
+            /** Would Change Crown */
+            would_change_crown: boolean;
+        };
+        /**
+         * AdminAthRulingsBoardProjection
+         * @description The crown arithmetic the batch was previewed (or executed) against.
+         *
+         *     Read from the validator-equivalent KOTH fold (eligible ledger with stderr,
+         *     quorum, confirmation and efficiency inputs) under the same fleet-gated tie
+         *     weighting and ceiling-band-clamp flags the public leaderboard's
+         *     ``emissions`` block applies, so the champion here is the one the board
+         *     shows.
+         */
+        AdminAthRulingsBoardProjection: {
+            /** Bench Version */
+            bench_version: number;
+            /** Champion Agent Id */
+            champion_agent_id: string | null;
+            /** Champion Hotkey */
+            champion_hotkey: string | null;
+            /** Champion Score */
+            champion_score: number | null;
+            /** Fingerprint */
+            fingerprint: string;
+            /** Ranked Count */
+            ranked_count: number;
+            /** Raw Leader Agent Id */
+            raw_leader_agent_id: string | null;
+            /** Raw Leader Score */
+            raw_leader_score: number | null;
+            /**
+             * Read At
+             * Format: date-time
+             */
+            read_at: string;
+        };
+        /** AdminAthRulingsExecuteRequest */
+        AdminAthRulingsExecuteRequest: {
+            /**
+             * Confirmation
+             * @constant
+             */
+            confirmation: "APPLY ATH RULINGS BATCH";
+            /** Preview Token */
+            preview_token: string;
+            /** Rulings */
+            rulings?: components["schemas"]["AdminAthRuling"][] | null;
+        };
+        /** AdminAthRulingsExecuteResponse */
+        AdminAthRulingsExecuteResponse: {
+            /** Already Applied Count */
+            already_applied_count: number;
+            /** Applied Count */
+            applied_count: number;
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            board_after: components["schemas"]["AdminAthRulingsBoardProjection"];
+            board_before: components["schemas"]["AdminAthRulingsBoardProjection"];
+            /** Failed Count */
+            failed_count: number;
+            /** Items */
+            items: components["schemas"]["AdminAthRulingExecuteItem"][];
+            /** Rulings Sha256 */
+            rulings_sha256: string;
+            /** Upload Key */
+            upload_key?: string | null;
+        };
+        /**
+         * AdminAthRulingsPreviewRequest
+         * @description Exactly one of ``upload_key`` (presigned upload) or inline ``rulings``.
+         */
+        AdminAthRulingsPreviewRequest: {
+            /** Rulings */
+            rulings?: components["schemas"]["AdminAthRuling"][] | null;
+            /** Source */
+            source?: string | null;
+            /** Upload Key */
+            upload_key?: string | null;
+        };
+        /** AdminAthRulingsPreviewResponse */
+        AdminAthRulingsPreviewResponse: {
+            /** Already Applied Count */
+            already_applied_count: number;
+            /** Blocked Count */
+            blocked_count: number;
+            board: components["schemas"]["AdminAthRulingsBoardProjection"];
+            /** Crown Moving Count */
+            crown_moving_count: number;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Items */
+            items: components["schemas"]["AdminAthRulingPreviewItem"][];
+            /** Preview Token */
+            preview_token: string;
+            /** Ready Count */
+            ready_count: number;
+            /** Rulings Sha256 */
+            rulings_sha256: string;
+            /** Source */
+            source?: string | null;
+            /** Upload Key */
+            upload_key?: string | null;
+        };
+        /** AdminAthRulingsUploadRequest */
+        AdminAthRulingsUploadRequest: {
+            /**
+             * Content Type
+             * @default application/json
+             * @constant
+             */
+            content_type: "application/json";
+        };
+        /** AdminAthRulingsUploadResponse */
+        AdminAthRulingsUploadResponse: {
+            /** Bucket */
+            bucket: string;
+            /** Content Type */
+            content_type: string;
+            /** Expires In */
+            expires_in: number;
+            /** Key */
+            key: string;
+            /** Max Bytes */
+            max_bytes: number;
+            /**
+             * Method
+             * @default PUT
+             * @constant
+             */
+            method: "PUT";
+            /** Url */
+            url: string;
+        };
+        /**
          * AdminAttestationRevokeRequest
          * @description Body of ``POST /admin/owner-attestations/{attestation_id}/revoke``.
          */
@@ -7606,6 +8001,126 @@ export interface components {
              * @default false
              */
             idempotent: boolean;
+        };
+        /** AdminFanoutShadowMetrics */
+        AdminFanoutShadowMetrics: {
+            /** Compared */
+            compared: number;
+            /** Disagreements */
+            disagreements: number;
+            /** Incomplete */
+            incomplete: number;
+            /** Incomplete Coverage */
+            incomplete_coverage: number;
+            /** Queued */
+            queued: number;
+            /** Rolling 24H Reported Cost Usd */
+            rolling_24h_reported_cost_usd: number;
+            /** Rolling 24H Reserved Cost Usd */
+            rolling_24h_reserved_cost_usd: number;
+            /** Rolling 24H Unmetered */
+            rolling_24h_unmetered: number;
+            /** Running */
+            running: number;
+            /** Skipped */
+            skipped: number;
+            /** Succeeded */
+            succeeded: number;
+            /** Total */
+            total: number;
+        };
+        /** AdminFanoutShadowResponse */
+        AdminFanoutShadowResponse: {
+            /** Count */
+            count: number;
+            /** Has More */
+            has_more: boolean;
+            /** Items */
+            items: components["schemas"]["AdminFanoutShadowReview"][];
+            /** Limit */
+            limit: number;
+            metrics: components["schemas"]["AdminFanoutShadowMetrics"];
+            /** Offset */
+            offset: number;
+            /** Returned */
+            returned: number;
+        };
+        /** AdminFanoutShadowReview */
+        AdminFanoutShadowReview: {
+            /**
+             * Agent Id
+             * Format: uuid
+             */
+            agent_id: string;
+            /** Artifact Sha256 */
+            artifact_sha256: string;
+            /**
+             * Attempt Id
+             * Format: uuid
+             */
+            attempt_id: string;
+            /** Baseline */
+            baseline: {
+                [key: string]: unknown;
+            };
+            /** Completed At */
+            completed_at: string | null;
+            /** Coverage Complete */
+            coverage_complete: boolean | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Disagrees With Baseline */
+            disagrees_with_baseline: boolean | null;
+            /** Error Code */
+            error_code: string | null;
+            /** Outcome */
+            outcome: ("no_findings" | "candidate" | "unresolved_candidate" | "critic_also_flagged" | "incomplete" | "skipped") | null;
+            /** Policy Manifest Digest */
+            policy_manifest_digest: string;
+            /**
+             * Policy Manifest Profile
+             * @enum {string}
+             */
+            policy_manifest_profile: "core" | "l1" | "l1_l2";
+            /** Policy Manifest Rotation Id */
+            policy_manifest_rotation_id: string;
+            /** Policy Version */
+            policy_version: number;
+            /** Provider */
+            provider: string | null;
+            /** Report */
+            report: {
+                [key: string]: unknown;
+            } | null;
+            /** Reported Cost Usd */
+            reported_cost_usd: number | null;
+            /** Reserved At */
+            reserved_at: string | null;
+            /** Reserved Cost Usd */
+            reserved_cost_usd: number;
+            /** Settings Checksum */
+            settings_checksum: string;
+            /** Settings Revision */
+            settings_revision: number;
+            /** Settings Scope */
+            settings_scope: string;
+            /**
+             * Shadow Id
+             * Format: uuid
+             */
+            shadow_id: string;
+            /** Started At */
+            started_at: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "leased" | "running" | "succeeded" | "incomplete" | "skipped";
+            /** Unmetered */
+            unmetered: boolean;
         };
         /** AdminHotkeyBanAuditEntry */
         AdminHotkeyBanAuditEntry: {
@@ -14606,10 +15121,22 @@ export interface components {
              */
             aggregate_mode: "disabled" | "fleet_ready" | "enabled";
             /**
+             * Crown Incumbent Mode
+             * @default disabled
+             * @enum {string}
+             */
+            crown_incumbent_mode: "disabled" | "fleet_ready";
+            /**
              * Idle Retests Enabled
              * @default false
              */
             idle_retests_enabled: boolean;
+            /**
+             * Ledger Pin Mode
+             * @default epoch
+             * @enum {string}
+             */
+            ledger_pin_mode: "live" | "epoch";
             /**
              * Retest Cohort Max Size
              * @default 25
@@ -15061,6 +15588,21 @@ export interface components {
             aggregate_active: boolean;
             /** Checksum */
             checksum: string;
+            /**
+             * Crown Incumbent Active
+             * @default false
+             */
+            crown_incumbent_active: boolean;
+            /**
+             * Crown Incumbent Fleet Ready
+             * @default false
+             */
+            crown_incumbent_fleet_ready: boolean;
+            /**
+             * Crown Incumbent Required Protocol
+             * @default 27
+             */
+            crown_incumbent_required_protocol: number;
             /** Eligible Agent Count */
             eligible_agent_count?: number | null;
             /**
@@ -15070,6 +15612,7 @@ export interface components {
             emission_set_size: number;
             /** Fleet Protocol Ready */
             fleet_protocol_ready: boolean;
+            ledger_pin?: components["schemas"]["LedgerPinStatus"] | null;
             /** Max Age Seconds */
             max_age_seconds: number;
             /**
@@ -15501,6 +16044,48 @@ export interface components {
              * @description ``True`` when a live ticket was closed for reissue.
              */
             reopened: boolean;
+        };
+        /** FanoutShadowCompleteRequest */
+        FanoutShadowCompleteRequest: {
+            /** Error Code */
+            error_code?: string | null;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "no_findings" | "candidate" | "unresolved_candidate" | "critic_also_flagged" | "incomplete" | "skipped";
+            /** Report */
+            report: {
+                [key: string]: unknown;
+            };
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "succeeded" | "incomplete";
+        };
+        /** FanoutShadowCompleteResponse */
+        FanoutShadowCompleteResponse: {
+            /** Accepted */
+            accepted: boolean;
+        };
+        /** FanoutShadowSourceResponse */
+        FanoutShadowSourceResponse: {
+            /** Artifact Sha256 */
+            artifact_sha256: string;
+            /** Policy Manifest Digest */
+            policy_manifest_digest: string;
+            /**
+             * Policy Manifest Profile
+             * @enum {string}
+             */
+            policy_manifest_profile: "core" | "l1" | "l1_l2";
+            /** Policy Manifest Rotation Id */
+            policy_manifest_rotation_id: string;
+            /** Policy Version */
+            policy_version: number;
+            /** Source Url B64 */
+            source_url_b64: string;
         };
         /**
          * FeedbackTrackContributionRequest
@@ -16522,6 +17107,33 @@ export interface components {
             validator_hotkey: string;
         };
         /**
+         * LedgerPinStatus
+         * @description Identity of the epoch-pinned ledger currently served to validators.
+         */
+        LedgerPinStatus: {
+            /** Bench Version */
+            bench_version: number;
+            /** Champion Agent Id */
+            champion_agent_id?: string | null;
+            /** Entry Count */
+            entry_count: number;
+            /** Epoch Index */
+            epoch_index: number;
+            /** Incumbent Agent Id */
+            incumbent_agent_id?: string | null;
+            /** Last Epoch Block */
+            last_epoch_block: number;
+            /** Ledger Digest */
+            ledger_digest: string;
+            /**
+             * Pinned At
+             * Format: date-time
+             */
+            pinned_at: string;
+            /** Pinned Block */
+            pinned_block: number;
+        };
+        /**
          * LedgerResponse
          * @description Returned by ``GET /scoring/scores``.
          *
@@ -16583,6 +17195,16 @@ export interface components {
              */
             count: number;
             /**
+             * Crown Incumbent Agent Id
+             * @description The incumbent the fold defends when crown_mode is incumbent; always one of entries. Absent whenever crown_mode is absent.
+             */
+            crown_incumbent_agent_id?: string | null;
+            /**
+             * Crown Mode
+             * @description Consensus activation marker for crown incumbency. When set to incumbent, the fold starts its champion walk from crown_incumbent_agent_id (the previous epoch's champion, resolved through its owner family) and moves the crown only when a challenger clears the dethrone band over it. Absent keeps the historical earliest-lineage walk, in which a senior claimant inside the band retakes the crown on every read.
+             */
+            crown_mode?: "incumbent" | null;
+            /**
              * Dethrone Band Mode
              * @description Consensus activation marker for the ceiling-aware dethrone band. When set to headroom_capped, the KOTH indifference band is capped at a fixed share of the score the challenger can still gain, so a near-perfect incumbent can never require more than the benchmark can deliver. Absent keeps the uncapped decayed band.
              */
@@ -16593,10 +17215,30 @@ export interface components {
              */
             entries: components["schemas"]["LedgerEntry"][];
             /**
+             * Epoch Index
+             * @description Chain SubnetEpochIndex this ledger was pinned for. Present only when the platform served an epoch-pinned ledger: every validator reading during that epoch receives byte-identical entries and markers, so a ledger change lands for the whole fleet at the next pin instead of splitting it on who read first. Absent on a live (unpinned) read.
+             */
+            epoch_index?: number | null;
+            /**
              * Generated At
              * @description When these entries were read from the DB (UTC). On a served last-known-good snapshot this is the age of the cached read, not 'now'.
              */
             generated_at?: string | null;
+            /**
+             * Ledger Digest
+             * @description SHA-256 over the canonical JSON of entries plus the served fold markers. Two validators folding the same pin hold the same digest; it is what a validator echoes back so the platform can show which snapshot each weight vector came from.
+             */
+            ledger_digest?: string | null;
+            /**
+             * Pinned At
+             * @description When the pin was taken (UTC); equals generated_at on a pin.
+             */
+            pinned_at?: string | null;
+            /**
+             * Pinned Block
+             * @description Head block the pin's epoch schedule was read at.
+             */
+            pinned_block?: number | null;
             /**
              * Stale
              * @description True when the live DB read failed and this is a served last-known-good snapshot. A fold may still use it (the ledger is durable and slow-moving) but should treat it as advisory.
@@ -18955,6 +19597,8 @@ export interface components {
             netuid: number;
             /** Owner Hotkey */
             owner_hotkey?: string | null;
+            /** @description Count of revealed vectors matching the current pin's fold, or null when no pin exists to compare against. */
+            pin_agreement?: components["schemas"]["PublicPinAgreement"] | null;
             /**
              * Stale
              * @description True when the most recent attempt to re-read the matrix failed and this is the last known good one. The block it pins is real chain state, just older than a normal response; a reader should label it rather than treat the matrix as absent.
@@ -19718,13 +20362,34 @@ export interface components {
             champion_miner_hotkey: string;
             /** Champion Share */
             champion_share: number;
+            /**
+             * Crown Incumbent Active
+             * @description Whether the displayed fold defends the crown from the previous pin's champion (crown_mode incumbent) instead of re-deriving it from the earliest lineage on every read.
+             * @default false
+             */
+            crown_incumbent_active: boolean;
+            /**
+             * Crown Incumbent Agent Id
+             * @description The incumbent the live fold defended, when incumbency is active and the current pin named one. Null otherwise.
+             */
+            crown_incumbent_agent_id?: string | null;
+            /**
+             * Crown Incumbent Required Protocol
+             * @description Minimum fleet heartbeat protocol for crown incumbency.
+             * @default 27
+             */
+            crown_incumbent_required_protocol: number;
             /** Dethrone Z */
             dethrone_z: number;
+            /** @description The epoch-pinned ledger validators are folding right now. The board above is live and can move within an epoch; weights only move at the next pin, so this is the snapshot any on-chain vector should be read against. Null while pinning is switched off or before the first pin was taken. */
+            ledger_pin?: components["schemas"]["PublicLedgerPin"] | null;
             /**
              * Margin
              * @description Base composite-point lead before versioned high-score band scaling.
              */
             margin: number;
+            /** @description What the next epoch pin would record if it were taken from the live board right now: the fold over the current rows with the current pin's champion as incumbent. Read changes_crown to know whether weights will move at the next pin. */
+            next_pin_projection?: components["schemas"]["PublicNextPinProjection"] | null;
             /** Rank Shares */
             rank_shares: number[];
             /**
@@ -20287,6 +20952,155 @@ export interface components {
             v9_confirmation_mode?: ("shadow" | "enforce") | null;
         };
         /**
+         * PublicLedgerActor
+         * @description One agent named by a pin: the champion, the incumbent, or a recipient.
+         */
+        PublicLedgerActor: {
+            /**
+             * Agent Id
+             * Format: uuid
+             */
+            agent_id: string;
+            /** Agent Name */
+            agent_name?: string | null;
+            /** Agent Version */
+            agent_version?: number | null;
+            /** Miner Hotkey */
+            miner_hotkey: string;
+        };
+        /**
+         * PublicLedgerEpoch
+         * @description One pinned epoch and the crown decision the fold derived from it.
+         */
+        PublicLedgerEpoch: {
+            /** Bench Version */
+            bench_version: number;
+            champion?: components["schemas"]["PublicLedgerActor"] | null;
+            /**
+             * Crown Changed
+             * @description True when this pin's champion differs from the previous pin's. A run of false across retest waves is the stability the pin and the incumbency mode exist to produce.
+             * @default false
+             */
+            crown_changed: boolean;
+            /** Crown Mode */
+            crown_mode?: "incumbent" | null;
+            /** Entry Count */
+            entry_count: number;
+            /** Epoch Index */
+            epoch_index: number;
+            incumbent?: components["schemas"]["PublicLedgerActor"] | null;
+            /** Last Epoch Block */
+            last_epoch_block: number;
+            /** Ledger Digest */
+            ledger_digest: string;
+            /**
+             * Pinned At
+             * Format: date-time
+             */
+            pinned_at: string;
+            /** Pinned Block */
+            pinned_block: number;
+            /** Recipients */
+            recipients?: components["schemas"]["PublicLedgerEpochRecipient"][];
+        };
+        /** PublicLedgerEpochRecipient */
+        PublicLedgerEpochRecipient: {
+            /**
+             * Agent Id
+             * Format: uuid
+             */
+            agent_id: string;
+            /** Agent Name */
+            agent_name?: string | null;
+            /** Agent Version */
+            agent_version?: number | null;
+            /** Miner Hotkey */
+            miner_hotkey: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "champion" | "joint_champion" | "tail";
+            /** Share Of Miner Pool */
+            share_of_miner_pool: number;
+        };
+        /**
+         * PublicLedgerEpochsResponse
+         * @description Newest-first history of epoch pins: what the fleet folded, epoch by epoch.
+         */
+        PublicLedgerEpochsResponse: {
+            /** Count */
+            count: number;
+            /** Epochs */
+            epochs?: components["schemas"]["PublicLedgerEpoch"][];
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "epoch" | "live";
+        };
+        /**
+         * PublicLedgerPin
+         * @description Identity of one epoch-pinned validator ledger.
+         */
+        PublicLedgerPin: {
+            /** Bench Version */
+            bench_version: number;
+            /** Champion Agent Id */
+            champion_agent_id?: string | null;
+            /**
+             * Crown Mode
+             * @description Fold marker frozen into the pin; null means the classic walk.
+             */
+            crown_mode?: "incumbent" | null;
+            /** Entry Count */
+            entry_count: number;
+            /**
+             * Epoch Index
+             * @description Chain SubnetEpochIndex the pin belongs to.
+             */
+            epoch_index: number;
+            /**
+             * Incumbent Agent Id
+             * @description The previous pin's champion resolved into this pool, which the incumbency fold defends when crown_mode is incumbent.
+             */
+            incumbent_agent_id?: string | null;
+            /** Last Epoch Block */
+            last_epoch_block: number;
+            /**
+             * Ledger Digest
+             * @description SHA-256 of the pinned entries plus fold markers; every validator folding this pin holds this digest.
+             */
+            ledger_digest: string;
+            /**
+             * Mode
+             * @description epoch: validators fold one frozen ledger per chain epoch; live: the historical time-based read (the rollback).
+             * @enum {string}
+             */
+            mode: "epoch" | "live";
+            /**
+             * Next Epoch Block
+             * @description Boundary that ends the pinned epoch, when it was known.
+             */
+            next_epoch_block?: number | null;
+            /**
+             * Pinned At
+             * Format: date-time
+             * @description When the pin was taken (UTC).
+             */
+            pinned_at: string;
+            /**
+             * Pinned Block
+             * @description Head block the pin's schedule was read at.
+             */
+            pinned_block: number;
+        };
+        /**
          * PublicMetricDoc
          * @description What one headline metric or composite-gate factor means.
          */
@@ -20410,6 +21224,31 @@ export interface components {
             stem: string;
         };
         /**
+         * PublicNextPinProjection
+         * @description The crown the next epoch pin would record from the live board.
+         */
+        PublicNextPinProjection: {
+            /**
+             * Champion Agent Id
+             * Format: uuid
+             */
+            champion_agent_id: string;
+            /** Champion Miner Hotkey */
+            champion_miner_hotkey: string;
+            /**
+             * Changes Crown
+             * @description True when the projected champion differs from the current pin's champion, i.e. the 65% slot moves at the next pin.
+             */
+            changes_crown: boolean;
+            /** @description The dethrone decision for the strongest rival against the projected champion; null when there is no rival. */
+            decision?: components["schemas"]["PublicDethroneDecision"] | null;
+            /**
+             * Incumbent Agent Id
+             * @description The current pin's champion the projection defended from.
+             */
+            incumbent_agent_id?: string | null;
+        };
+        /**
          * PublicOperationsResponse
          * @description One cacheable operations snapshot shared by pipeline and fleet views.
          */
@@ -20496,6 +21335,20 @@ export interface components {
              * @enum {string}
              */
             state: "still_running" | "indeterminate";
+        };
+        /**
+         * PublicPinAgreement
+         * @description How many revealed vectors match the fold the current pin prescribes.
+         */
+        PublicPinAgreement: {
+            /** Epoch Index */
+            epoch_index: number;
+            /** Matching */
+            matching: number;
+            /** Previous Epoch Index */
+            previous_epoch_index?: number | null;
+            /** Total */
+            total: number;
         };
         /**
          * PublicProvisionalScore
@@ -21628,6 +22481,8 @@ export interface components {
              * @description Validator's public hotkey.
              */
             validator_hotkey: string;
+            /** @description Which pinned ledger this validator last folded and the digest of the vector it committed. Null before the first fold or for validators older than heartbeat protocol v27. */
+            weights_fold?: components["schemas"]["PublicWeightsFold"] | null;
         };
         /**
          * PublicValidatorHeartbeatsResponse
@@ -21824,12 +22679,37 @@ export interface components {
          * @description One validator's latest publicly revealed on-chain weights.
          */
         PublicValidatorWeightVector: {
+            /** @description The pinned ledger this validator reported folding on its latest heartbeat; null for validators that do not heartbeat to the Platform or predate heartbeat protocol v27. */
+            fold?: components["schemas"]["PublicWeightsFold"] | null;
+            /**
+             * Matches Pin
+             * @description Whether this revealed vector's recipients and shares match the fold prescribed by the current epoch pin (current), the previous pin (previous: one epoch behind, the normal reveal lag), neither (diverged), or could not be compared (unknown: no pin yet or an empty vector).
+             * @default unknown
+             * @enum {string}
+             */
+            matches_pin: "current" | "previous" | "diverged" | "unknown";
             /** Validator Hotkey */
             validator_hotkey: string;
             /** Validator Uid */
             validator_uid: number;
             /** Weights */
             weights?: components["schemas"]["PublicChainWeight"][];
+        };
+        /**
+         * PublicWeightsFold
+         * @description What a validator reported folding, from its latest signed heartbeat.
+         */
+        PublicWeightsFold: {
+            /** Champion Agent Id */
+            champion_agent_id?: string | null;
+            /** Epoch Index */
+            epoch_index?: number | null;
+            /** Folded At */
+            folded_at: number;
+            /** Ledger Digest */
+            ledger_digest?: string | null;
+            /** Vector Digest */
+            vector_digest: string;
         };
         /**
          * QueuePolicySettings
@@ -23851,6 +24731,74 @@ export interface components {
              * @enum {string}
              */
             critic_reasoning_effort: "low" | "medium" | "high";
+            /**
+             * Fanout Shadow Concurrency
+             * @default 2
+             */
+            fanout_shadow_concurrency: number;
+            /**
+             * Fanout Shadow Daily Cost Usd
+             * @default 20
+             */
+            fanout_shadow_daily_cost_usd: number;
+            /**
+             * Fanout Shadow Global Concurrency
+             * @default 1
+             * @constant
+             */
+            fanout_shadow_global_concurrency: 1;
+            /**
+             * Fanout Shadow Image Source Sha
+             * @default 0000000000000000000000000000000000000000
+             */
+            fanout_shadow_image_source_sha: string;
+            /**
+             * Fanout Shadow Max Cost Usd
+             * @default 3
+             */
+            fanout_shadow_max_cost_usd: number;
+            /**
+             * Fanout Shadow Max Groups
+             * @default 4
+             */
+            fanout_shadow_max_groups: number;
+            /**
+             * Fanout Shadow Max Requests
+             * @default 40
+             */
+            fanout_shadow_max_requests: number;
+            /**
+             * Fanout Shadow Max Steps
+             * @default 4
+             */
+            fanout_shadow_max_steps: number;
+            /**
+             * Fanout Shadow Max Total Tokens
+             * @default 1500000
+             */
+            fanout_shadow_max_total_tokens: number;
+            /**
+             * Fanout Shadow Mode
+             * @default off
+             * @enum {string}
+             */
+            fanout_shadow_mode: "off" | "shadow";
+            /**
+             * Fanout Shadow Model
+             * @default z-ai/glm-5.3-flash
+             * @constant
+             */
+            fanout_shadow_model: "z-ai/glm-5.3-flash";
+            /**
+             * Fanout Shadow Reserved Targon Slots
+             * @default 1
+             */
+            fanout_shadow_reserved_targon_slots: number;
+            /**
+             * Fanout Shadow Timeout Seconds
+             * @default 900
+             */
+            fanout_shadow_timeout_seconds: number;
             /**
              * L2 Fallback Models
              * @default [
@@ -26376,6 +27324,8 @@ export interface components {
              * @description Reporting validator hotkey.
              */
             validator_hotkey: string;
+            /** @description Which pinned ledger this validator last folded and the digest of the weight vector it committed, under heartbeat protocol v27. Null before the first fold of the process or on older validators. */
+            weights_fold?: components["schemas"]["WeightsFold"] | null;
         };
         /**
          * ValidatorHeartbeatResponse
@@ -26625,8 +27575,17 @@ export interface components {
         };
         /** ValidatorWeightObservation */
         ValidatorWeightObservation: {
+            /** @description The pinned ledger this validator reported folding on its latest heartbeat; null for validators that do not heartbeat to the Platform or predate heartbeat protocol v27. */
+            fold?: components["schemas"]["PublicWeightsFold"] | null;
             /** Last Update Block */
             last_update_block: number;
+            /**
+             * Matches Pin
+             * @description Whether this revealed vector's recipients and shares match the fold prescribed by the current epoch pin (current), the previous pin (previous: one epoch behind, the normal reveal lag), neither (diverged), or could not be compared (unknown: no pin yet or an empty vector).
+             * @default unknown
+             * @enum {string}
+             */
+            matches_pin: "current" | "previous" | "diverged" | "unknown";
             /** Validator Hotkey */
             validator_hotkey: string;
             /** Validator Trust */
@@ -26644,6 +27603,37 @@ export interface components {
             uid: number;
             /** Value */
             value: number;
+        };
+        /**
+         * WeightsFold
+         * @description Signed summary of one validator weight fold, under heartbeat protocol v27.
+         */
+        WeightsFold: {
+            /**
+             * Champion Agent Id
+             * @description The champion this fold derived, if any.
+             */
+            champion_agent_id?: string | null;
+            /**
+             * Epoch Index
+             * @description Chain SubnetEpochIndex of the pinned ledger that was folded; null when the ledger served was a live (unpinned) read.
+             */
+            epoch_index?: number | null;
+            /**
+             * Folded At
+             * @description Unix timestamp (UTC) the fold was submitted.
+             */
+            folded_at: number;
+            /**
+             * Ledger Digest
+             * @description The served ledger_digest, replayed verbatim.
+             */
+            ledger_digest?: string | null;
+            /**
+             * Vector Digest
+             * @description SHA-256 of the canonical JSON of the [hotkey, weight] pairs handed to Pylon, sorted by hotkey.
+             */
+            vector_digest: string;
         };
     };
     responses: never;
@@ -27003,6 +27993,114 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ArtifactReleaseSettingsRevision"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    execute_ath_rulings_batch_api_v1_admin_ath_rulings_batch_execute_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Admin-Actor"?: string | null;
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminAthRulingsExecuteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminAthRulingsExecuteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_ath_rulings_batch_api_v1_admin_ath_rulings_batch_preview_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Admin-Actor"?: string | null;
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminAthRulingsPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminAthRulingsPreviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_ath_rulings_upload_api_v1_admin_ath_rulings_upload_url_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Admin-Actor"?: string | null;
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminAthRulingsUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminAthRulingsUploadResponse"];
                 };
             };
             /** @description Validation Error */
@@ -29412,6 +30510,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ScreenerCapacityView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_screener_fanout_shadow_api_v1_admin_screener_fanout_shadow_get: {
+        parameters: {
+            query?: {
+                status?: ("queued" | "leased" | "running" | "succeeded" | "incomplete" | "skipped") | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminFanoutShadowResponse"];
                 };
             };
             /** @description Validation Error */
@@ -33512,6 +34645,37 @@ export interface operations {
             };
         };
     };
+    ledger_epochs_api_v1_public_ledger_epochs_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicLedgerEpochsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     public_miner_avatar_api_v1_public_miners__hotkey__avatar_get: {
         parameters: {
             query?: never;
@@ -35280,6 +36444,76 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    complete_fanout_shadow_review_api_v1_screener_fanout_shadow_reviews__shadow_id__complete_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                shadow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FanoutShadowCompleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FanoutShadowCompleteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_fanout_shadow_source_api_v1_screener_fanout_shadow_reviews__shadow_id__source_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                shadow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FanoutShadowSourceResponse"];
+                };
             };
             /** @description Validation Error */
             422: {

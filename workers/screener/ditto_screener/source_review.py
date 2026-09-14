@@ -8,6 +8,7 @@ import fnmatch
 import hashlib
 import json
 import logging
+import math
 import posixpath
 import re
 import tarfile
@@ -276,6 +277,9 @@ _SOURCE_REVIEW_FAILURE_CODES: Mapping[str, str] = {
     "source archive contains a duplicate path": "archive-invalid",
     "provenance file could not be read": "archive-invalid",
     "static preflight mode must be off, shadow, or enforce": "detector-config-invalid",
+    "max_completion_request_seconds must be finite and positive": (
+        "request-timeout-config-invalid"
+    ),
     # The reviewer exhausted a budget we set. Not infrastructure: the submission
     # was too large or too deep to review within the configured bounds.
     "source reviewer exceeded lease budget": "lease-budget-exhausted",
@@ -3345,6 +3349,7 @@ class OpenRouterSourceReviewAgent:
             _MODEL_TRANSPORT_RETRY_DELAYS_SECONDS
         ),
         inference_provider: str = "openrouter",
+        max_completion_request_seconds: float | None = None,
     ) -> None:
         self._inference_provider = inference_provider
         # Gradient thresholds for a budget-terminated review: this many
@@ -3362,6 +3367,21 @@ class OpenRouterSourceReviewAgent:
             _MIN_MAX_COMPLETION_TOKENS, int(max_completion_tokens)
         )
         self._reasoning_effort = reasoning_effort
+        request_timeout = (
+            _MAX_COMPLETION_REQUEST_SECONDS
+            if max_completion_request_seconds is None
+            else max_completion_request_seconds
+        )
+        if (
+            not isinstance(request_timeout, (int, float))
+            or isinstance(request_timeout, bool)
+            or not math.isfinite(request_timeout)
+            or request_timeout <= 0
+        ):
+            raise ValueError(
+                "max_completion_request_seconds must be finite and positive"
+            )
+        self._max_completion_request_seconds = float(request_timeout)
         self._transport_retry_delays = tuple(
             max(0.0, float(delay)) for delay in transport_retry_delays
         )
@@ -3802,7 +3822,6 @@ class OpenRouterSourceReviewAgent:
                 # Disabling this turned one provider outage into a terminal L1
                 # timeout even though a compliant provider was available.
                 "allow_fallbacks": True,
-                "sort": "throughput",
                 "zdr": True,
                 "data_collection": "deny",
                 "require_parameters": True,
@@ -3810,7 +3829,7 @@ class OpenRouterSourceReviewAgent:
         }
         effective_timeout = min(
             timeout if timeout is not None else self._timeout_seconds,
-            _MAX_COMPLETION_REQUEST_SECONDS,
+            self._max_completion_request_seconds,
         )
         async with asyncio.timeout(effective_timeout):
             response = await client.post(
@@ -3847,6 +3866,26 @@ def _source_review_failure_code(error: BaseException) -> str:
 
 
 def _assistant_message(payload: object) -> dict[str, object]:
+    # Metadata only: never log private source, prompts, model text or arguments.
+    if isinstance(payload, dict):
+        choices = payload.get("choices")
+        choice = (
+            choices[0]
+            if isinstance(choices, list) and choices and isinstance(choices[0], dict)
+            else {}
+        )
+        message = choice.get("message") or {}
+        if isinstance(message, dict) and not message.get("tool_calls"):
+            usage = payload.get("usage") or {}
+            logger.warning(
+                "model response without tools model=%s finish=%s "
+                "content_chars=%s prompt_tokens=%s completion_tokens=%s",
+                payload.get("model"),
+                choice.get("finish_reason"),
+                len(str(message.get("content") or "")),
+                usage.get("prompt_tokens") if isinstance(usage, dict) else None,
+                usage.get("completion_tokens") if isinstance(usage, dict) else None,
+            )
     if not isinstance(payload, dict):
         raise ValueError("source reviewer response is not an object")
     choices = payload.get("choices")

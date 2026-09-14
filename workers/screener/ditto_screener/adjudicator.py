@@ -92,7 +92,9 @@ _MAX_COMPLETION_TOKENS = 6_000
 # healthy completion responsive and reserve one equal slice for a new
 # connection; an unresponsive provider must settle from retained notes, not
 # spend 150 seconds of a miner's lease.
-_MAX_COMPLETION_REQUEST_SECONDS = 90.0
+# Reasoning plus a verdict can exceed 90s with a 16k completion budget.
+# The outer request/lease deadline still bounds both attempts together.
+_MAX_COMPLETION_REQUEST_SECONDS = 180.0
 _MAX_COMPLETION_REQUEST_ATTEMPTS = 2
 # Bounded by the repository tools themselves; this only caps how many of
 # the served locations are remembered for citation checking.
@@ -1006,7 +1008,6 @@ class SourceReviewAdjudicator:
                 # while allowing the router to fail over between compatible
                 # healthy providers instead of timing out behind one endpoint.
                 "allow_fallbacks": True,
-                "sort": "throughput",
                 "zdr": True,
                 "data_collection": "deny",
                 "require_parameters": True,
@@ -1046,6 +1047,26 @@ class SourceReviewAdjudicator:
 
 
 def _assistant_message(payload: object) -> dict[str, object]:
+    # Metadata only: never log private source, prompts, model text or arguments.
+    if isinstance(payload, dict):
+        choices = payload.get("choices")
+        choice = (
+            choices[0]
+            if isinstance(choices, list) and choices and isinstance(choices[0], dict)
+            else {}
+        )
+        message = choice.get("message") or {}
+        if isinstance(message, dict) and not message.get("tool_calls"):
+            usage = payload.get("usage") or {}
+            logger.warning(
+                "model response without tools model=%s finish=%s "
+                "content_chars=%s prompt_tokens=%s completion_tokens=%s",
+                payload.get("model"),
+                choice.get("finish_reason"),
+                len(str(message.get("content") or "")),
+                usage.get("prompt_tokens") if isinstance(usage, dict) else None,
+                usage.get("completion_tokens") if isinstance(usage, dict) else None,
+            )
     if not isinstance(payload, dict):
         raise ValueError("adjudicator response is not an object")
     choices = payload.get("choices")

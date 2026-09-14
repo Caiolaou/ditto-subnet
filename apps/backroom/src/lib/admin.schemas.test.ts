@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, expectTypeOf, it } from 'vitest'
 import type { input as ZodInput, output as ZodOutput } from 'zod'
 import type { components as PlatformComponents } from '../generated/platform-api'
@@ -14,6 +16,15 @@ import {
   validatorFleetSchema,
   copyReviewListSchema,
   openAthReviewInputSchema,
+  ATH_RULINGS_CONFIRMATION,
+  athRulingSchema,
+  athRulingPreviewItemSchema,
+  athRulingsPreviewResponseSchema,
+  athRulingsExecuteResponseSchema,
+  athRulingsUploadResponseSchema,
+  athRulingsBoardProjectionSchema,
+  previewAthRulingsBatchInputSchema,
+  executeAthRulingsBatchInputSchema,
   resolveCopyReviewInputSchema,
   resolveScreeningQuarantineInputSchema,
   screeningDisputeListSchema,
@@ -1879,6 +1890,34 @@ describe('screener review settings schemas', () => {
     expect(parsed.applied_instances[0]?.revision).toBe(42)
   })
 
+  it('parses the historical Platform policy manifest wire shape', () => {
+    const parsed = screenerReviewControlSchema.parse({
+      current: [],
+      history: [],
+      known_instances: [],
+      applied_instances: [],
+      shadow_observations: [],
+      policy_manifests: [{
+        revision: 106,
+        scope: 'subnet-screener-1',
+        policy_version: 13,
+        profile: 'l1_l2',
+        rotation_id: 'policy-v11-global-topdown',
+        digest: 'b3a2612bdd5a2085ec01892705f44cf217b7a4e184de5622b748106edb3e496d',
+        reason: 'Preserve the existing policy manifest contract.',
+        actor: 'operator@example.com',
+        created_at: '2026-09-14T02:51:58.121154Z',
+      }],
+    })
+
+    expect(parsed.policy_manifests[0]).toMatchObject({
+      revision: 106,
+      profile: 'l1_l2',
+      rotation_id: 'policy-v11-global-topdown',
+      digest: 'b3a2612bdd5a2085ec01892705f44cf217b7a4e184de5622b748106edb3e496d',
+    })
+  })
+
   it('fills L1 Luna budget defaults when older payloads omit them', () => {
     const {
       source_review_max_steps,
@@ -3125,6 +3164,8 @@ describe('continual retest cohort sizing against an older platform', () => {
   })
   const legacySupport = {
     tie_weighting_mode: false,
+    ledger_pin_mode: false,
+    crown_incumbent_mode: false,
     retest_cohort_size: false,
     wave_membership: false,
     retest_eligibility_mode: false,
@@ -3139,6 +3180,8 @@ describe('continual retest cohort sizing against an older platform', () => {
   const legacyPolicy = {
     aggregate_mode: 'enabled' as const,
     tie_weighting_mode: 'disabled' as const,
+    ledger_pin_mode: 'live' as const,
+    crown_incumbent_mode: 'disabled' as const,
     idle_retests_enabled: true,
     rollout_standdown: 'all' as const,
     wave_membership: 'strict' as const,
@@ -3238,6 +3281,8 @@ describe('continual retest cohort sizing against an older platform', () => {
 
     expect(continualRetestFieldSupport(partial)).toEqual({
       tie_weighting_mode: false,
+      ledger_pin_mode: false,
+      crown_incumbent_mode: false,
       retest_cohort_size: false,
       wave_membership: true,
       retest_eligibility_mode: false,
@@ -3252,6 +3297,8 @@ describe('continual retest write contract', () => {
   const complete = {
     aggregate_mode: 'fleet_ready' as const,
     tie_weighting_mode: 'fleet_ready' as const,
+    ledger_pin_mode: 'epoch' as const,
+    crown_incumbent_mode: 'fleet_ready' as const,
     idle_retests_enabled: false,
     rollout_standdown: 'capable_validators' as const,
     wave_membership: 'strict' as const,
@@ -3269,6 +3316,8 @@ describe('continual retest write contract', () => {
     // collapsed cohort, a discarded tie band.
     for (const field of [
       'tie_weighting_mode',
+      'ledger_pin_mode',
+      'crown_incumbent_mode',
       'wave_membership',
       'retest_cohort_size',
       'retest_eligibility_mode',
@@ -3331,6 +3380,8 @@ describe('continual retest write contract', () => {
     ).toEqual({
       aggregate_mode: 'fleet_ready',
       tie_weighting_mode: 'disabled',
+      ledger_pin_mode: 'epoch',
+      crown_incumbent_mode: 'disabled',
       idle_retests_enabled: false,
       rollout_standdown: 'capable_validators',
       wave_membership: 'participants',
@@ -4243,5 +4294,134 @@ describe('public leaderboard rows that do not rank', () => {
     >().toMatchTypeOf<
       ZodInput<typeof publicLeaderboardSchema>['entries'][number]['rank']
     >()
+  })
+})
+
+describe('batched ATH rulings schemas', () => {
+  const ruling = {
+    action: 'reject',
+    agent_id: 'c25489aa-faf0-46fc-8b06-8e2240a5ac01',
+    expected_sha256: 'ab'.repeat(32),
+    expected_score_count: 3,
+    reason: 'Reject under screening policy v12 for I5',
+    evidence_references: ['routing.py:357-395', 'src/agent.rs:441'],
+  }
+
+  it('accepts the uploaded document shape inline and refuses ambiguous input', () => {
+    expect(previewAthRulingsBatchInputSchema.parse({ rulings: [ruling] }).rulings).toHaveLength(1)
+    expect(
+      previewAthRulingsBatchInputSchema.parse({
+        uploadKey: 'ath-rulings/v1/peyton-omniaura.ai/2026-09-13/x.json',
+      }).uploadKey,
+    ).toContain('ath-rulings/v1/')
+    expect(() => previewAthRulingsBatchInputSchema.parse({})).toThrow(/exactly one/)
+    expect(() =>
+      previewAthRulingsBatchInputSchema.parse({ uploadKey: 'k', rulings: [ruling] }),
+    ).toThrow(/exactly one/)
+    expect(() =>
+      previewAthRulingsBatchInputSchema.parse({ rulings: [ruling, { ...ruling, action: 'clear' }] }),
+    ).toThrow(/only once/)
+  })
+
+  it('keeps citations to path:line and reasons unbounded above', () => {
+    expect(() => athRulingSchema.parse({ ...ruling, evidence_references: ['no line'] })).toThrow()
+    expect(() => athRulingSchema.parse({ ...ruling, reason: 'no' })).toThrow()
+    expect(athRulingSchema.parse({ ...ruling, reason: 'x'.repeat(20_000) }).reason).toHaveLength(
+      20_000,
+    )
+    expect(athRulingSchema.parse({ ...ruling, evidence_references: undefined }).evidence_references).toEqual([])
+  })
+
+  it('binds execute to the exact confirmation phrase', () => {
+    const token = `1757779856.eyJ2IjoxfQ.${'a'.repeat(64)}`
+    expect(
+      executeAthRulingsBatchInputSchema.parse({
+        previewToken: token,
+        confirmation: ATH_RULINGS_CONFIRMATION,
+      }).rulings,
+    ).toBeUndefined()
+    expect(() =>
+      executeAthRulingsBatchInputSchema.parse({ previewToken: token, confirmation: 'APPLY' }),
+    ).toThrow()
+    expect(() =>
+      executeAthRulingsBatchInputSchema.parse({ previewToken: 'short', confirmation: ATH_RULINGS_CONFIRMATION }),
+    ).toThrow()
+  })
+
+  // The drift guard: every Platform response field has an explicit validator
+  // and the key sets match the generated contract in both directions.
+  it('mirrors the generated Platform contract field-for-field', () => {
+    expectTypeOf<keyof ZodOutput<typeof athRulingsUploadResponseSchema>>().toEqualTypeOf<
+      keyof PlatformComponents['schemas']['AdminAthRulingsUploadResponse']
+    >()
+    expectTypeOf<keyof ZodOutput<typeof athRulingsBoardProjectionSchema>>().toEqualTypeOf<
+      keyof PlatformComponents['schemas']['AdminAthRulingsBoardProjection']
+    >()
+    expectTypeOf<keyof ZodOutput<typeof athRulingPreviewItemSchema>>().toEqualTypeOf<
+      keyof PlatformComponents['schemas']['AdminAthRulingPreviewItem']
+    >()
+    expectTypeOf<keyof ZodOutput<typeof athRulingsPreviewResponseSchema>>().toEqualTypeOf<
+      keyof PlatformComponents['schemas']['AdminAthRulingsPreviewResponse']
+    >()
+    expectTypeOf<keyof ZodOutput<typeof athRulingsExecuteResponseSchema>>().toEqualTypeOf<
+      keyof PlatformComponents['schemas']['AdminAthRulingsExecuteResponse']
+    >()
+    expectTypeOf<ZodInput<typeof athRulingSchema>>().toMatchTypeOf<
+      PlatformComponents['schemas']['AdminAthRuling']
+    >()
+    expect(
+      Object.keys(
+        athRulingPreviewItemSchema.parse({
+          index: 0,
+          action: 'reject',
+          agent_id: ruling.agent_id,
+          ok: true,
+          disposition: 'ready',
+          stale_guard: false,
+          would_change_crown: true,
+          reason: ruling.reason,
+          message: 'will open then reject',
+        }),
+      ).sort(),
+    ).toEqual([
+      'action',
+      'agent_id',
+      'agent_name',
+      'agent_status',
+      'agent_version',
+      'artifact_sha256',
+      'conflict_reason',
+      'disposition',
+      'evidence_references',
+      'index',
+      'message',
+      'miner_hotkey',
+      'ok',
+      'reason',
+      'score_count',
+      'stale_guard',
+      'steps',
+      'would_change_crown',
+    ])
+  })
+
+  it('parses the 2026-09-13 top-5 replay fixture the Platform tests execute', () => {
+    const fixture = JSON.parse(
+      readFileSync(
+        resolve(
+          __dirname,
+          '../../../platform/ditto/tests/fixtures/ath_rulings_replay_2026-09-13.json',
+        ),
+        'utf8',
+      ),
+    ) as { source: string; rulings: Array<unknown> }
+    const parsed = previewAthRulingsBatchInputSchema.parse({
+      rulings: fixture.rulings,
+      source: fixture.source,
+    })
+    expect(parsed.rulings).toHaveLength(5)
+    expect(parsed.rulings?.every((item) => item.action === 'reject')).toBe(true)
+    expect(parsed.rulings?.every((item) => item.evidence_references.length > 0)).toBe(true)
+    expect(parsed.source).toBe('docs/sn118-top5-board-review-2026-09-13.json')
   })
 })

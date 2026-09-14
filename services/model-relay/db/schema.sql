@@ -2899,6 +2899,32 @@ CREATE TABLE public.inference_routing_policies (
 
 
 --
+-- Name: ledger_epoch_snapshots; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.ledger_epoch_snapshots (
+    snapshot_id uuid NOT NULL,
+    netuid integer NOT NULL,
+    epoch_index bigint NOT NULL,
+    last_epoch_block bigint NOT NULL,
+    pinned_block bigint NOT NULL,
+    pinned_block_hash text NOT NULL,
+    pinned_at timestamp with time zone NOT NULL,
+    bench_version integer NOT NULL,
+    entries jsonb NOT NULL,
+    context jsonb NOT NULL,
+    champion_agent_id uuid,
+    champion_owner_root text,
+    incumbent_agent_id uuid,
+    ledger_digest text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_ledger_epoch_snapshots_ledger_epoch_snapshots_digest_check CHECK ((length(ledger_digest) = 64)),
+    CONSTRAINT ck_ledger_epoch_snapshots_ledger_epoch_snapshots_epoch__f05e CHECK ((epoch_index >= 0)),
+    CONSTRAINT ck_ledger_epoch_snapshots_ledger_epoch_snapshots_pinned_2bb4 CHECK ((pinned_block >= last_epoch_block))
+);
+
+
+--
 -- Name: miner_avatar_nonces; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -3436,6 +3462,57 @@ CREATE TABLE public.screener_capacity_snapshots (
     CONSTRAINT ck_screener_capacity_snapshots_screener_capacity_snapsh_b27a CHECK ((controller_source_sha ~ '^[0-9a-f]{40}$'::text)),
     CONSTRAINT ck_screener_capacity_snapshots_screener_capacity_snapsh_d0c8 CHECK (((runnable_backlog >= 0) AND (active_leases >= 0) AND (desired_slots >= 0) AND (global_cap >= 0))),
     CONSTRAINT ck_screener_capacity_snapshots_screener_capacity_snapsh_e2bb CHECK ((targon_capability = ANY (ARRAY['go'::text, 'nogo'::text, 'unknown'::text])))
+);
+
+
+--
+-- Name: screener_fanout_shadow_reviews; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.screener_fanout_shadow_reviews (
+    shadow_id uuid NOT NULL,
+    agent_id uuid NOT NULL,
+    attempt_id uuid NOT NULL,
+    environment text NOT NULL,
+    artifact_sha256 text NOT NULL,
+    policy_version integer NOT NULL,
+    policy_manifest_profile text NOT NULL,
+    policy_manifest_rotation_id text NOT NULL,
+    policy_manifest_digest text NOT NULL,
+    settings_revision integer NOT NULL,
+    settings_scope text NOT NULL,
+    settings_checksum text NOT NULL,
+    status text DEFAULT 'queued'::text NOT NULL,
+    outcome text,
+    baseline jsonb NOT NULL,
+    report jsonb,
+    disagrees_with_baseline boolean,
+    coverage_complete boolean,
+    error_code text,
+    provider text,
+    provider_resource_id text,
+    controller_epoch text,
+    lease_expires_at timestamp with time zone,
+    job_token_hash text,
+    job_token_expires_at timestamp with time zone,
+    reserved_cost_microusd bigint DEFAULT '0'::bigint NOT NULL,
+    reported_cost_microusd bigint,
+    reserved_at timestamp with time zone,
+    unmetered boolean DEFAULT false NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    started_at timestamp with time zone,
+    completed_at timestamp with time zone,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_screener_fanout_shadow_reviews_screener_fanout_shado_00df CHECK ((policy_manifest_digest ~ '^[0-9a-f]{64}$'::text)),
+    CONSTRAINT ck_screener_fanout_shadow_reviews_screener_fanout_shado_2240 CHECK ((policy_manifest_profile = ANY (ARRAY['core'::text, 'l1'::text, 'l1_l2'::text]))),
+    CONSTRAINT ck_screener_fanout_shadow_reviews_screener_fanout_shado_3683 CHECK (((provider IS NULL) OR (provider = ANY (ARRAY['targon'::text, 'gcp'::text])))),
+    CONSTRAINT ck_screener_fanout_shadow_reviews_screener_fanout_shado_5b99 CHECK ((settings_checksum ~ '^[0-9a-f]{64}$'::text)),
+    CONSTRAINT ck_screener_fanout_shadow_reviews_screener_fanout_shado_66e9 CHECK (((outcome IS NULL) OR (outcome = ANY (ARRAY['no_findings'::text, 'candidate'::text, 'unresolved_candidate'::text, 'critic_also_flagged'::text, 'incomplete'::text, 'skipped'::text])))),
+    CONSTRAINT ck_screener_fanout_shadow_reviews_screener_fanout_shado_8f5d CHECK ((status = ANY (ARRAY['queued'::text, 'leased'::text, 'running'::text, 'succeeded'::text, 'incomplete'::text, 'skipped'::text]))),
+    CONSTRAINT ck_screener_fanout_shadow_reviews_screener_fanout_shado_9b4a CHECK ((artifact_sha256 ~ '^[0-9a-f]{64}$'::text)),
+    CONSTRAINT ck_screener_fanout_shadow_reviews_screener_fanout_shado_b781 CHECK (((reserved_cost_microusd >= 0) AND (reported_cost_microusd >= 0))),
+    CONSTRAINT ck_screener_fanout_shadow_reviews_screener_fanout_shado_dbe8 CHECK (((job_token_hash IS NULL) OR (job_token_hash ~ '^[0-9a-f]{64}$'::text))),
+    CONSTRAINT ck_screener_fanout_shadow_reviews_screener_fanout_shado_dd87 CHECK ((environment ~ '^[a-z][a-z0-9-]{0,31}$'::text))
 );
 
 
@@ -4123,6 +4200,7 @@ CREATE TABLE public.validator_heartbeats (
     claimed_slots jsonb,
     confirmation_progress jsonb,
     updater_status jsonb,
+    weights_fold jsonb,
     CONSTRAINT validator_heartbeats_code_digest_length_check CHECK ((length(code_digest) = 64)),
     CONSTRAINT validator_heartbeats_protocol_version_check CHECK ((protocol_version > 0)),
     CONSTRAINT validator_heartbeats_signature_length_check CHECK ((length(signature) = 128)),
@@ -5320,6 +5398,14 @@ ALTER TABLE ONLY public.inference_provider_routes
 
 
 --
+-- Name: ledger_epoch_snapshots ledger_epoch_snapshots_epoch_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ledger_epoch_snapshots
+    ADD CONSTRAINT ledger_epoch_snapshots_epoch_key UNIQUE (netuid, epoch_index);
+
+
+--
 -- Name: miner_avatar_nonces miner_avatar_nonces_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -5832,6 +5918,14 @@ ALTER TABLE ONLY public.inference_routing_policies
 
 
 --
+-- Name: ledger_epoch_snapshots pk_ledger_epoch_snapshots; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ledger_epoch_snapshots
+    ADD CONSTRAINT pk_ledger_epoch_snapshots PRIMARY KEY (snapshot_id);
+
+
+--
 -- Name: miner_ditto_link_attempts pk_miner_ditto_link_attempts; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -5893,6 +5987,14 @@ ALTER TABLE ONLY public.screener_capacity_events
 
 ALTER TABLE ONLY public.screener_capacity_snapshots
     ADD CONSTRAINT pk_screener_capacity_snapshots PRIMARY KEY (environment);
+
+
+--
+-- Name: screener_fanout_shadow_reviews pk_screener_fanout_shadow_reviews; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.screener_fanout_shadow_reviews
+    ADD CONSTRAINT pk_screener_fanout_shadow_reviews PRIMARY KEY (shadow_id);
 
 
 --
@@ -6117,6 +6219,14 @@ ALTER TABLE public.scores
 
 ALTER TABLE ONLY public.scores
     ADD CONSTRAINT scores_pkey PRIMARY KEY (agent_id, bench_version, validator_hotkey);
+
+
+--
+-- Name: screener_fanout_shadow_reviews screener_fanout_shadow_reviews_attempt_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.screener_fanout_shadow_reviews
+    ADD CONSTRAINT screener_fanout_shadow_reviews_attempt_key UNIQUE (attempt_id);
 
 
 --
@@ -6977,6 +7087,13 @@ CREATE INDEX inference_routing_audit_history_idx ON public.inference_routing_aud
 
 
 --
+-- Name: ledger_epoch_snapshots_recent_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ledger_epoch_snapshots_recent_idx ON public.ledger_epoch_snapshots USING btree (netuid, epoch_index DESC);
+
+
+--
 -- Name: miner_avatar_nonces_hotkey_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -7135,6 +7252,27 @@ CREATE INDEX screened_image_uploads_status_expires_idx ON public.screened_image_
 --
 
 CREATE INDEX screener_capacity_events_environment_created_idx ON public.screener_capacity_events USING btree (environment, created_at);
+
+
+--
+-- Name: screener_fanout_shadow_reviews_created_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX screener_fanout_shadow_reviews_created_idx ON public.screener_fanout_shadow_reviews USING btree (created_at, shadow_id);
+
+
+--
+-- Name: screener_fanout_shadow_reviews_queue_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX screener_fanout_shadow_reviews_queue_idx ON public.screener_fanout_shadow_reviews USING btree (environment, status, created_at);
+
+
+--
+-- Name: screener_fanout_shadow_reviews_reserved_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX screener_fanout_shadow_reviews_reserved_idx ON public.screener_fanout_shadow_reviews USING btree (reserved_at);
 
 
 --
@@ -8313,6 +8451,30 @@ ALTER TABLE ONLY public.inference_grants
 
 ALTER TABLE ONLY public.inference_requests
     ADD CONSTRAINT fk_inference_requests_grant_id_inference_grants FOREIGN KEY (grant_id) REFERENCES public.inference_grants(grant_id) ON DELETE CASCADE;
+
+
+--
+-- Name: screener_fanout_shadow_reviews fk_screener_fanout_shadow_reviews_agent_id_agents; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.screener_fanout_shadow_reviews
+    ADD CONSTRAINT fk_screener_fanout_shadow_reviews_agent_id_agents FOREIGN KEY (agent_id) REFERENCES public.agents(agent_id) ON DELETE CASCADE;
+
+
+--
+-- Name: screener_fanout_shadow_reviews fk_screener_fanout_shadow_reviews_attempt_id_screening_attempts; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.screener_fanout_shadow_reviews
+    ADD CONSTRAINT fk_screener_fanout_shadow_reviews_attempt_id_screening_attempts FOREIGN KEY (attempt_id) REFERENCES public.screening_attempts(attempt_id) ON DELETE CASCADE;
+
+
+--
+-- Name: screener_fanout_shadow_reviews fk_screener_fanout_shadow_reviews_settings_revision_scr_a1a2; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.screener_fanout_shadow_reviews
+    ADD CONSTRAINT fk_screener_fanout_shadow_reviews_settings_revision_scr_a1a2 FOREIGN KEY (settings_revision) REFERENCES public.screener_review_settings_revisions(revision) ON DELETE RESTRICT;
 
 
 --

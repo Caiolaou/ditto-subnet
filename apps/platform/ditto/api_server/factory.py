@@ -65,6 +65,7 @@ from ditto.api_server.efficiency_settings import (
 from ditto.api_server.embedding import create_embedder
 from ditto.api_server.endpoints import (
     admin_artifact_release_settings_router,
+    admin_ath_rulings_router,
     admin_attestation_router,
     admin_benchmark_rollout_router,
     admin_burn_settings_router,
@@ -94,6 +95,7 @@ from ditto.api_server.endpoints import (
     admin_retirement_router,
     admin_scoring_readiness_router,
     admin_screener_capacity_router,
+    admin_screener_fanout_shadow_router,
     admin_screener_policy_activation_router,
     admin_screener_review_settings_router,
     admin_submission_deposit_address_router,
@@ -143,6 +145,7 @@ from ditto.api_server.inference_concurrency_settings import (
     InferenceConcurrencySettingsResolver,
 )
 from ditto.api_server.inference_routing import ProviderRouteRefresher
+from ditto.api_server.ledger_pin import LedgerPinLoop, LedgerPinMaterializer
 from ditto.api_server.middleware import (
     AuthPassThroughMiddleware,
     PublicCacheMiddleware,
@@ -389,6 +392,19 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             if _process_role() == PLATFORM_ROLE:
                 await copy_court.start()
             app.state.copy_hold_court = copy_court
+            # The epoch pin must land at the chain boundary even when no
+            # validator is reading; the request path pins on demand as well and
+            # the table's unique key makes the race harmless. Singleton for the
+            # same reason as the janitor: one loop per deployment is enough.
+            ledger_pin_loop = LedgerPinLoop(
+                app_state=app.state,
+                session_maker=app.state.session_maker,
+                materializer=app.state.ledger_pin_materializer,
+            )
+            stack.push_async_callback(ledger_pin_loop.aclose)
+            if _process_role() == PLATFORM_ROLE:
+                await ledger_pin_loop.start()
+            app.state.ledger_pin_loop = ledger_pin_loop
 
             validator_names = app.state.validator_names
             stack.push_async_callback(validator_names.aclose)
@@ -552,6 +568,8 @@ def create_api_server(config: ApiServerConfig | None = None) -> FastAPI:
         ttl_seconds=_efficiency_settings_ttl_seconds(),
     )
     app.state.efficiency_materializer = EfficiencyStateMaterializer()
+    # Epoch-pinned validator ledger: one immutable fold input per chain epoch.
+    app.state.ledger_pin_materializer = LedgerPinMaterializer()
     # Operator-owned share of miner emission routed to the owner burn hotkey.
     # Served on the scoring ledger, so a change reaches the fleet on its next
     # poll instead of on a validator release.
@@ -660,10 +678,12 @@ def create_api_server(config: ApiServerConfig | None = None) -> FastAPI:
     app.include_router(admin_validator_slot_settings_router, prefix="/api/v1")
     app.include_router(admin_scoring_readiness_router, prefix="/api/v1")
     app.include_router(admin_screener_review_settings_router, prefix="/api/v1")
+    app.include_router(admin_screener_fanout_shadow_router, prefix="/api/v1")
     app.include_router(admin_screener_capacity_router, prefix="/api/v1")
     app.include_router(admin_submission_settings_router, prefix="/api/v1")
     app.include_router(admin_submission_deposit_address_router, prefix="/api/v1")
     app.include_router(admin_copy_review_router, prefix="/api/v1")
+    app.include_router(admin_ath_rulings_router, prefix="/api/v1")
     app.include_router(admin_copy_court_router, prefix="/api/v1")
     app.include_router(admin_coding_certifications_router, prefix="/api/v1")
     app.include_router(admin_coding_control_plane_router, prefix="/api/v1")

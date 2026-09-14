@@ -1578,6 +1578,203 @@ class PublicKothEmissions(BaseModel):
         ),
     ] = None
     recipients: list[PublicEmissionRecipient] = Field(default_factory=list)
+    crown_incumbent_active: Annotated[
+        bool,
+        Field(
+            default=False,
+            description=(
+                "Whether the displayed fold defends the crown from the previous "
+                "pin's champion (crown_mode incumbent) instead of re-deriving it "
+                "from the earliest lineage on every read."
+            ),
+        ),
+    ] = False
+    crown_incumbent_required_protocol: Annotated[
+        int,
+        Field(
+            default=27,
+            ge=1,
+            description="Minimum fleet heartbeat protocol for crown incumbency.",
+        ),
+    ] = 27
+    crown_incumbent_agent_id: Annotated[
+        UUID | None,
+        Field(
+            default=None,
+            description=(
+                "The incumbent the live fold defended, when incumbency is active "
+                "and the current pin named one. Null otherwise."
+            ),
+        ),
+    ] = None
+    next_pin_projection: Annotated[
+        PublicNextPinProjection | None,
+        Field(
+            default=None,
+            description=(
+                "What the next epoch pin would record if it were taken from the "
+                "live board right now: the fold over the current rows with the "
+                "current pin's champion as incumbent. Read changes_crown to know "
+                "whether weights will move at the next pin."
+            ),
+        ),
+    ] = None
+    ledger_pin: Annotated[
+        PublicLedgerPin | None,
+        Field(
+            default=None,
+            description=(
+                "The epoch-pinned ledger validators are folding right now. The "
+                "board above is live and can move within an epoch; weights only "
+                "move at the next pin, so this is the snapshot any on-chain "
+                "vector should be read against. Null while pinning is switched "
+                "off or before the first pin was taken."
+            ),
+        ),
+    ] = None
+
+
+class PublicNextPinProjection(BaseModel):
+    """The crown the next epoch pin would record from the live board."""
+
+    champion_agent_id: UUID
+    champion_miner_hotkey: Annotated[str, Field(pattern=_SS58_PATTERN)]
+    incumbent_agent_id: Annotated[
+        UUID | None,
+        Field(
+            default=None,
+            description="The current pin's champion the projection defended from.",
+        ),
+    ] = None
+    changes_crown: Annotated[
+        bool,
+        Field(
+            description=(
+                "True when the projected champion differs from the current pin's "
+                "champion, i.e. the 65% slot moves at the next pin."
+            )
+        ),
+    ]
+    decision: Annotated[
+        PublicDethroneDecision | None,
+        Field(
+            default=None,
+            description=(
+                "The dethrone decision for the strongest rival against the "
+                "projected champion; null when there is no rival."
+            ),
+        ),
+    ] = None
+
+
+class PublicLedgerPin(BaseModel):
+    """Identity of one epoch-pinned validator ledger."""
+
+    mode: Annotated[
+        Literal["epoch", "live"],
+        Field(
+            description=(
+                "epoch: validators fold one frozen ledger per chain epoch; live: "
+                "the historical time-based read (the rollback)."
+            )
+        ),
+    ]
+    epoch_index: Annotated[
+        int, Field(ge=0, description="Chain SubnetEpochIndex the pin belongs to.")
+    ]
+    last_epoch_block: Annotated[int, Field(ge=0)]
+    pinned_block: Annotated[
+        int, Field(ge=0, description="Head block the pin's schedule was read at.")
+    ]
+    pinned_at: Annotated[datetime, Field(description="When the pin was taken (UTC).")]
+    next_epoch_block: Annotated[
+        int | None,
+        Field(
+            default=None,
+            ge=0,
+            description="Boundary that ends the pinned epoch, when it was known.",
+        ),
+    ] = None
+    bench_version: Annotated[int, Field(ge=1)]
+    entry_count: Annotated[int, Field(ge=0)]
+    ledger_digest: Annotated[
+        str,
+        Field(
+            pattern=r"^[0-9a-f]{64}$",
+            description=(
+                "SHA-256 of the pinned entries plus fold markers; every validator "
+                "folding this pin holds this digest."
+            ),
+        ),
+    ]
+    champion_agent_id: UUID | None = None
+    incumbent_agent_id: Annotated[
+        UUID | None,
+        Field(
+            default=None,
+            description=(
+                "The previous pin's champion resolved into this pool, which the "
+                "incumbency fold defends when crown_mode is incumbent."
+            ),
+        ),
+    ] = None
+    crown_mode: Annotated[
+        Literal["incumbent"] | None,
+        Field(
+            default=None,
+            description="Fold marker frozen into the pin; null means the classic walk.",
+        ),
+    ] = None
+
+
+class PublicLedgerActor(BaseModel):
+    """One agent named by a pin: the champion, the incumbent, or a recipient."""
+
+    agent_id: UUID
+    miner_hotkey: Annotated[str, Field(pattern=_SS58_PATTERN)]
+    agent_name: str | None = None
+    agent_version: Annotated[int | None, Field(default=None, ge=1)] = None
+
+
+class PublicLedgerEpochRecipient(PublicLedgerActor):
+    role: Literal["champion", "joint_champion", "tail"]
+    share_of_miner_pool: Annotated[float, Field(gt=0.0, le=1.0)]
+
+
+class PublicLedgerEpoch(BaseModel):
+    """One pinned epoch and the crown decision the fold derived from it."""
+
+    epoch_index: Annotated[int, Field(ge=0)]
+    last_epoch_block: Annotated[int, Field(ge=0)]
+    pinned_block: Annotated[int, Field(ge=0)]
+    pinned_at: datetime
+    bench_version: Annotated[int, Field(ge=1)]
+    entry_count: Annotated[int, Field(ge=0)]
+    ledger_digest: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
+    crown_mode: Literal["incumbent"] | None = None
+    champion: PublicLedgerActor | None = None
+    incumbent: PublicLedgerActor | None = None
+    crown_changed: Annotated[
+        bool,
+        Field(
+            default=False,
+            description=(
+                "True when this pin's champion differs from the previous pin's. "
+                "A run of false across retest waves is the stability the pin "
+                "and the incumbency mode exist to produce."
+            ),
+        ),
+    ] = False
+    recipients: list[PublicLedgerEpochRecipient] = Field(default_factory=list)
+
+
+class PublicLedgerEpochsResponse(BaseModel):
+    """Newest-first history of epoch pins: what the fleet folded, epoch by epoch."""
+
+    generated_at: datetime
+    mode: Literal["epoch", "live"]
+    count: Annotated[int, Field(ge=0)]
+    epochs: list[PublicLedgerEpoch] = Field(default_factory=list)
 
 
 class PublicEfficiencyStatus(BaseModel):
@@ -1995,12 +2192,60 @@ class PublicChainWeight(BaseModel):
     value: Annotated[int, Field(gt=0, le=65535)]
 
 
+PinAgreement = Literal["current", "previous", "diverged", "unknown"]
+
+
+class PublicWeightsFold(BaseModel):
+    """What a validator reported folding, from its latest signed heartbeat."""
+
+    epoch_index: Annotated[int | None, Field(default=None, ge=0)] = None
+    ledger_digest: Annotated[
+        str | None, Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    ] = None
+    vector_digest: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
+    champion_agent_id: UUID | None = None
+    folded_at: Annotated[int, Field(ge=0)]
+
+
+class PublicPinAgreement(BaseModel):
+    """How many revealed vectors match the fold the current pin prescribes."""
+
+    epoch_index: Annotated[int, Field(ge=0)]
+    previous_epoch_index: Annotated[int | None, Field(default=None, ge=0)] = None
+    matching: Annotated[int, Field(ge=0)]
+    total: Annotated[int, Field(ge=0)]
+
+
 class PublicValidatorWeightVector(BaseModel):
     """One validator's latest publicly revealed on-chain weights."""
 
     validator_uid: Annotated[int, Field(ge=0)]
     validator_hotkey: Annotated[str, Field(pattern=_SS58_PATTERN)]
     weights: list[PublicChainWeight] = Field(default_factory=list)
+    fold: Annotated[
+        PublicWeightsFold | None,
+        Field(
+            default=None,
+            description=(
+                "The pinned ledger this validator reported folding on its latest "
+                "heartbeat; null for validators that do not heartbeat to the "
+                "Platform or predate heartbeat protocol v27."
+            ),
+        ),
+    ] = None
+    matches_pin: Annotated[
+        PinAgreement,
+        Field(
+            default="unknown",
+            description=(
+                "Whether this revealed vector's recipients and shares match the "
+                "fold prescribed by the current epoch pin (current), the previous "
+                "pin (previous: one epoch behind, the normal reveal lag), neither "
+                "(diverged), or could not be compared (unknown: no pin yet or an "
+                "empty vector)."
+            ),
+        ),
+    ] = "unknown"
 
 
 class PublicChainEpoch(BaseModel):
@@ -2138,6 +2383,16 @@ class PublicChainWeightsResponse(BaseModel):
     block_hash: Annotated[str, Field(pattern=r"^0x[0-9a-fA-F]{64}$")]
     owner_hotkey: Annotated[str | None, Field(default=None, pattern=_SS58_PATTERN)]
     vectors: list[PublicValidatorWeightVector] = Field(default_factory=list)
+    pin_agreement: Annotated[
+        PublicPinAgreement | None,
+        Field(
+            default=None,
+            description=(
+                "Count of revealed vectors matching the current pin's fold, or "
+                "null when no pin exists to compare against."
+            ),
+        ),
+    ] = None
     stale: Annotated[
         bool,
         Field(
@@ -4092,6 +4347,17 @@ class PublicValidatorHeartbeat(BaseModel):
             description=(
                 "Signed sanitized managed-updater state. Null for validators "
                 "older than heartbeat protocol v23."
+            ),
+        ),
+    ] = None
+    weights_fold: Annotated[
+        PublicWeightsFold | None,
+        Field(
+            default=None,
+            description=(
+                "Which pinned ledger this validator last folded and the digest of "
+                "the vector it committed. Null before the first fold or for "
+                "validators older than heartbeat protocol v27."
             ),
         ),
     ] = None
