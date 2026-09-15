@@ -31,6 +31,13 @@ type RowEnrichment = {
   score: number | null;
 };
 
+/** A validator permit does not make a hotkey miner-ineligible. A permitted UID
+ * with positive incentive is participating in the miner allocation and must
+ * remain visible beside ordinary non-permit miner registrations. */
+export function isMiningUid(neuron: PublicNeuron): boolean {
+  return !neuron.validator_permit || neuron.incentive > 0;
+}
+
 function latest<T>(resource: ResourceState<T> | undefined): T | undefined {
   if (!resource || resource.error()) return undefined;
   try {
@@ -112,8 +119,9 @@ export function MetagraphPage(
 
   const filtered = createMemo(() => {
     const snap = latest(chain());
-    // Miners only — hide validators (and any owner/validator-permit rows).
-    let list = (snap?.metagraph ?? []).filter((n) => !n.validator_permit);
+    // Hide validator-only rows, but retain permit holders that also receive a
+    // miner incentive. Validator permit is a capability, not an exclusive role.
+    let list = (snap?.metagraph ?? []).filter(isMiningUid);
     const q = query().trim().toLowerCase();
     if (q) {
       list = list.filter((n) => {
@@ -243,7 +251,7 @@ export function MetagraphPage(
               </div>
               <div class="col-num" role="columnheader">
                 <button type="button" onClick={() => toggleSort("score")}>
-                  Score{sortMark("score")}
+                  Official score{sortMark("score")}
                 </button>
               </div>
               <div class="col-num" role="columnheader">
@@ -272,7 +280,7 @@ export function MetagraphPage(
                 </button>
               </div>
               <div class="col-active" role="columnheader">
-                Active
+                Chain active
               </div>
             </div>
             <Show
@@ -378,9 +386,10 @@ export function MetagraphPage(
           }}
         />
         <p class="metagraph-footnote">
-          Miners only. Stake/emission are on-chain α. τ/day = emission × tempos/day × α/TAO. Agent,
-          score, and avatar are matched by miner hotkey (submission key) — click a row for miner
-          history.
+          Mining UIDs only, including validator-permit hotkeys with positive miner incentive.
+          Stake/emission are on-chain α. τ/day is a projection: last-tempo emission × tempos/day ×
+          current α/TAO. Agent, official score, and avatar come from the public leaderboard and are
+          matched by miner hotkey — click a row for miner history.
         </p>
       </div>
     </section>
