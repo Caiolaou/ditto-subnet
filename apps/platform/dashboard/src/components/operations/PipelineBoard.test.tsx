@@ -614,7 +614,7 @@ describe("scoring selection and the run panel", () => {
       })),
     });
 
-  it("selects a Scoring card on a plain click instead of navigating", () => {
+  it("selects a Scoring card on a plain click and opens the agent route", () => {
     const selected: string[] = [];
     const { container } = render(() => (
       <PipelineBoard
@@ -634,10 +634,12 @@ describe("scoring selection and the run panel", () => {
     expect(cards.length).toBe(2);
     // Still a real link, so a modified click opens the full history natively.
     expect(cards[1]!.getAttribute("href")).toContain("thief");
-    expect(cards[1]!.getAttribute("aria-label")).toContain("Show run progress for thief");
+    expect(cards[1]!.getAttribute("aria-label")).toContain(
+      "Show run progress and details for thief",
+    );
     fireEvent.click(cards[1]!);
     expect(selected).toEqual(["a:thief"]);
-    expect(location.search).not.toContain("agent=");
+    expect(location.search).toContain("agent=");
     // Every run keeps its own progress element on the card.
     expect(container.querySelectorAll("#pipeline-evaluating .benchmark-progress").length).toBe(4);
   });

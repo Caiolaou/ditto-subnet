@@ -184,10 +184,10 @@ function CodingShadowLane(props: {
   );
 }
 
-/** A plain click on a Scoring card selects it for the run-progress panel;
- * modified clicks keep the link's native new-tab behaviour, and the panel
- * itself links to the full history. */
-function selectClick(ev: MouseEvent, onSelect: () => void): void {
+/** A plain click on a Scoring card selects it for the run-progress panel and
+ * opens the agent modal. Modified clicks keep the link's native new-tab
+ * behaviour. */
+function selectClick(ev: MouseEvent, onSelect: () => void, agentId: string): void {
   if (
     ev.defaultPrevented ||
     ev.button !== 0 ||
@@ -199,6 +199,7 @@ function selectClick(ev: MouseEvent, onSelect: () => void): void {
     return;
   ev.preventDefault();
   onSelect();
+  pushEntityRoute("agent", agentId);
 }
 
 function PipelineCard(props: {
@@ -302,12 +303,15 @@ function PipelineCard(props: {
       data-entity-link="agent"
       data-pipeline-i={props.item.index}
       data-admission={admissionState()}
-      aria-label={props.onSelect ? "Show run progress for " + accessibleName() : ariaLabel()}
+      aria-label={
+        props.onSelect ? "Show run progress and details for " + accessibleName() : ariaLabel()
+      }
       aria-current={props.selected ? "true" : undefined}
       onClick={(ev) => {
         const select = props.onSelect;
-        if (select) selectClick(ev, select);
-        else cardClick(ev, String(entry().agent_id || ""));
+        const agentId = String(entry().agent_id || "");
+        if (select) selectClick(ev, select, agentId);
+        else cardClick(ev, agentId);
       }}
     >
       <span class="pipeline-item-heading">
